@@ -23,7 +23,7 @@ layer deeper only where it points:
 
 1. `CLI=missing` → treat as E_BIN_STALE for the CLI: re-run the installer.
 2. `AUTH=missing` → separate network from auth:
-   `curl -sS -o /dev/null -w '%{http_code}' https://tirelesscode.com/api/regions`
+   `curl -sS -o /dev/null -w '%{http_code}' https://app.tirelesscode.com/api/regions`
    — only a curl TRANSPORT error (non-zero exit, no HTTP code) →
    E_NET_PLATFORM; ANY HTTP status → E_CODER_LOGIN. Do not use `-f`: the
    route requires a session, so a healthy network answers 401 here — an HTTP
@@ -42,9 +42,9 @@ layer deeper only where it points:
 
 | Code | Meaning | Fix |
 |---|---|---|
-| `E_BIN_STALE` | `tireless-connect` older than the platform minimum | Codex/Cursor: `curl -fsSL https://tirelesscode.com/connect/install.sh \| sh`. Claude Code: restart the session — the plugin launcher self-updates the binary (or `claude plugin update tireless`). |
+| `E_BIN_STALE` | `tireless-connect` older than the platform minimum | Codex/Cursor: `curl -fsSL https://app.tirelesscode.com/connect/install.sh \| sh`. Claude Code: restart the session — the plugin launcher self-updates the binary (or `claude plugin update tireless`). |
 | `E_PATH` | `~/.local/bin` not on PATH | Use absolute paths this session; offer to append `export PATH="$HOME/.local/bin:$PATH"` to the shell profile (ask first). |
-| `E_NET_PLATFORM` | platform API unreachable | Re-probe `curl -sS -o /dev/null -w '%{http_code}' https://tirelesscode.com/api/regions` (any HTTP status — 401 included — means reachable; only a transport error is a network problem); probe general connectivity; ask about VPN/proxy/firewall. Unresolvable → support summary. |
+| `E_NET_PLATFORM` | platform API unreachable | Re-probe `curl -sS -o /dev/null -w '%{http_code}' https://app.tirelesscode.com/api/regions` (any HTTP status — 401 included — means reachable; only a transport error is a network problem); probe general connectivity; ask about VPN/proxy/firewall. Unresolvable → support summary. |
 | `E_TOKEN_INVALID` | platform bearer token rejected | User runs `tireless-connect login` in their OWN terminal, replies "done"; re-run doctor. |
 | `E_TOKEN_EXPIRED` | token expired and refresh failed | Same fix as E_TOKEN_INVALID. |
 | `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | User runs `tireless login <cpUrl>` in their OWN terminal (browser one-click; token pasted THERE, never in chat), replies "done"; re-run doctor. |

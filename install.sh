@@ -19,7 +19,7 @@
 # Cursor rule file is rewritten in place.
 set -eu
 
-APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://tirelesscode.com}"
+APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 TAR_URL="${TIRELESS_AGENT_TAR_URL:-https://codeload.github.com/Tireless-Coder/agent/tar.gz/refs/heads/main}"
 SKILLS_DEST="$HOME/.agents/skills/tireless"
 BIN_DIR="$HOME/.local/bin"

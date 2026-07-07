@@ -15,7 +15,7 @@
 # Read-only: probes never mutate state, so this script is safe to pre-approve.
 set -eu
 
-APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://tirelesscode.com}"
+APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 BIN_DIR="$HOME/.local/bin"
 SSH_CONFIG="$HOME/.ssh/config"
 CLIP_CONFIG="$HOME/.ssh/tireless_clip_config"

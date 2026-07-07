@@ -39,7 +39,7 @@ tool) and fix the FIRST failing key:
 
 | Key | Fix |
 |---|---|
-| `CLIP_BIN=missing` | `curl -fsSL https://tirelesscode.com/clip/install.sh \| sh` (installs AND wires) |
+| `CLIP_BIN=missing` | `curl -fsSL https://app.tirelesscode.com/clip/install.sh \| sh` (installs AND wires) |
 | `CLIP_CONFIG=missing` or `CLIP_INCLUDE=missing` | `tireless-clip setup` |
 | `DAEMON=dead` | `tireless-clip ensure-daemon`, then RECONNECT the ssh session (the tunnel is per-connection) |
 | `REMOTE_SHIM=missing` | workspace image predates the bridge — user installs the "clipboard-bridge" recipe from the dashboard |

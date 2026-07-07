@@ -19,7 +19,7 @@ claude plugin marketplace add Tireless-Coder/agent && claude plugin install tire
 **Codex & Cursor** — paste into the agent:
 
 ```
-curl -fsSL https://tirelesscode.com/connect/install.sh | sh
+curl -fsSL https://app.tirelesscode.com/connect/install.sh | sh
 ```
 
 Then say: *"connect to my workspace"*.
@@ -60,7 +60,7 @@ Then say: *"connect to my workspace"*.
   create tool only returns the plan/price card; skills forbid agents from
   passing `confirm: true` without your explicit, quoted yes.
 - **The Claude plugin is self-contained**: its launcher downloads
-  `tireless-connect` from `https://tirelesscode.com/connect/bin/<os>-<arch>`
+  `tireless-connect` from `https://app.tirelesscode.com/connect/bin/<os>-<arch>`
   on first session and keeps it current against `GET /api/agent/version`.
 
 ## Security notes

@@ -46,14 +46,14 @@ lines; branch on exact string matches:
 | `CLIP` | clipboard companion installed + wired (`stale` = installed, not wired) |
 | `CONNECT` | `tireless-connect` MCP binary present |
 | `PATHOK` | `~/.local/bin` on PATH |
-| `APP_ORIGIN` | platform origin (default `https://tirelesscode.com`) |
+| `APP_ORIGIN` | platform origin (default `https://app.tirelesscode.com`) |
 
 If everything is `ok`, jump to Step 5 and just verify.
 
 ## Step 1 — install the CLI + clipboard companion (when CLI=missing)
 
 ```
-curl -fsSL https://tirelesscode.com/install.sh | sh -s -- --no-login
+curl -fsSL https://app.tirelesscode.com/install.sh | sh -s -- --no-login
 ```
 
 `--no-login` skips the interactive browser login — that step reads /dev/tty
@@ -62,9 +62,9 @@ and would hang your Bash tool. Auth happens in Step 2 instead.
 - Multi-region platforms: the served installer only bakes in a default region
   when exactly ONE is active. If the output says `no region given` (or the
   preflight still reports `CLI=missing` afterwards), list the region ids with
-  `curl -fsSL https://tirelesscode.com/install.sh | grep "CP_URL="`, ask the
+  `curl -fsSL https://app.tirelesscode.com/install.sh | grep "CP_URL="`, ask the
   user which region their workspace lives in, then re-run:
-  `curl -fsSL https://tirelesscode.com/install.sh | sh -s -- --no-login --region <regionId>`.
+  `curl -fsSL https://app.tirelesscode.com/install.sh | sh -s -- --no-login --region <regionId>`.
 - If `PATHOK=no`: use `~/.local/bin/tireless` and `~/.local/bin/tireless-clip`
   explicitly this session, and offer (ask first) to append
   `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile.
@@ -94,7 +94,7 @@ and would hang your Bash tool. Auth happens in Step 2 instead.
 - If `CONNECT=missing`: tell the user to run `tireless login <cpUrl>` in
   their own terminal instead, then say "done". To find `<cpUrl>` read the CP
   case from the served installer (read-only):
-  `curl -fsSL https://tirelesscode.com/install.sh | grep "CP_URL="` — or the
+  `curl -fsSL https://app.tirelesscode.com/install.sh | grep "CP_URL="` — or the
   user can copy the command from their dashboard SSH page.
 - After "done": re-run the preflight. `AUTH=ok` means proceed; still
   `missing` means switch to the fix skill.
@@ -110,7 +110,7 @@ prompts, safe for non-interactive use).
 
 ## Step 4 — clipboard bridge (when CLIP=stale|missing)
 
-- `CLIP=missing`: `curl -fsSL https://tirelesscode.com/clip/install.sh | sh`
+- `CLIP=missing`: `curl -fsSL https://app.tirelesscode.com/clip/install.sh | sh`
   (downloads the companion AND runs its setup).
 - `CLIP=stale`: `tireless-clip setup` (use `~/.local/bin/tireless-clip` if
   not on PATH).

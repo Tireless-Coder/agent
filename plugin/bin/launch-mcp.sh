@@ -15,7 +15,7 @@ set -eu
 
 log() { printf 'tireless: %s\n' "$*" >&2; }
 
-APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://tirelesscode.com}"
+APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 # CLAUDE_PLUGIN_DATA persists across plugin updates; the fallback matches
 # Claude Code's documented data-dir layout in case the variable is unset.
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/tireless}"
