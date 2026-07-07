@@ -2,7 +2,7 @@
 # Tireless Agent Connector — multi-client installer (Codex, Cursor).
 #
 # Claude Code users never need this script; the Claude plugin is:
-#   claude plugin marketplace add tirelesscode/agent && claude plugin install tireless@tireless
+#   claude plugin marketplace add Tireless-Coder/agent && claude plugin install tireless@tireless
 # and its bundled launcher self-installs the tireless-connect binary.
 #
 # Modes:
@@ -20,7 +20,7 @@
 set -eu
 
 APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://tirelesscode.com}"
-TAR_URL="${TIRELESS_AGENT_TAR_URL:-https://codeload.github.com/tirelesscode/agent/tar.gz/refs/heads/main}"
+TAR_URL="${TIRELESS_AGENT_TAR_URL:-https://codeload.github.com/Tireless-Coder/agent/tar.gz/refs/heads/main}"
 SKILLS_DEST="$HOME/.agents/skills/tireless"
 BIN_DIR="$HOME/.local/bin"
 MARK_BEGIN="# >>> tireless agent connector >>>"
@@ -67,11 +67,11 @@ if [ -n "$script_dir" ] && [ -d "$script_dir/plugin/skills" ]; then
 else
   workdir="$(mktemp -d)"
   CLEANUP="$workdir"
-  echo "[..] fetching skills from tirelesscode/agent"
+  echo "[..] fetching skills from Tireless-Coder/agent"
   curl -fsSL "$TAR_URL" | tar -xz -C "$workdir"
   SRC="$(find "$workdir" -mindepth 1 -maxdepth 1 -type d | head -n1)"
   if [ -z "$SRC" ] || [ ! -d "$SRC/plugin/skills" ]; then
-    echo "error: could not fetch the tirelesscode/agent source tree." >&2
+    echo "error: could not fetch the Tireless-Coder/agent source tree." >&2
     exit 1
   fi
 fi

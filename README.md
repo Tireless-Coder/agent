@@ -13,7 +13,7 @@ diagnoses its own failures.
 **Claude Code**
 
 ```
-claude plugin marketplace add tirelesscode/agent && claude plugin install tireless@tireless
+claude plugin marketplace add Tireless-Coder/agent && claude plugin install tireless@tireless
 ```
 
 **Codex & Cursor** — paste into the agent:
