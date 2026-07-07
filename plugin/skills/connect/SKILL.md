@@ -18,7 +18,9 @@ idempotent; skip steps whose preflight key already says ok.
   exact command, they run it there and reply "done". If a user pastes a token
   into chat anyway, tell them to revoke it immediately.
 - **Never** run `tireless start|stop|delete|create` or call the Coder API.
-  Lifecycle belongs to the platform reconciler — see `reference/lifecycle.md`.
+  Lifecycle belongs to the platform reconciler — see the lifecycle reference
+  (Claude Code: `${CLAUDE_PLUGIN_ROOT}/reference/lifecycle.md`; Codex/Cursor:
+  `~/.agents/skills/tireless/reference/lifecycle.md`).
 - **Never create a workspace from this skill.** Creation is confirm-gated
   behind the `tireless_create_workspace` MCP tool and requires the user's
   explicit yes (it bills their card). See the workspace skill.
@@ -57,6 +59,12 @@ curl -fsSL https://tirelesscode.com/install.sh | sh -s -- --no-login
 `--no-login` skips the interactive browser login — that step reads /dev/tty
 and would hang your Bash tool. Auth happens in Step 2 instead.
 
+- Multi-region platforms: the served installer only bakes in a default region
+  when exactly ONE is active. If the output says `no region given` (or the
+  preflight still reports `CLI=missing` afterwards), list the region ids with
+  `curl -fsSL https://tirelesscode.com/install.sh | grep "CP_URL="`, ask the
+  user which region their workspace lives in, then re-run:
+  `curl -fsSL https://tirelesscode.com/install.sh | sh -s -- --no-login --region <regionId>`.
 - If `PATHOK=no`: use `~/.local/bin/tireless` and `~/.local/bin/tireless-clip`
   explicitly this session, and offer (ask first) to append
   `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile.

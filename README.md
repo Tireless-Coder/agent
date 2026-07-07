@@ -33,7 +33,7 @@ Then say: *"connect to my workspace"*.
 | `plugin/skills/workspace` | Remote-exec idioms (`ssh <ws>.tireless 'cd … && …'`), editor deeplinks, preview ports, lifecycle guardrails. |
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
 | `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. |
-| `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin`, then `exec tireless-connect mcp`. |
+| `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (SHA256SUMS-verified), then `exec tireless-connect mcp`. |
 | `install.sh` | Multi-client installer for Codex/Cursor (`--codex --cursor --skills-only --all`). Marker-delimited, never duplicates. |
 | `agents/AGENTS.snippet.md` | 10-line AGENTS.md degradation of the connect skill. |
 | `evals/eval.xml` | Read-only MCP evaluations (mcp-builder format). |
@@ -67,8 +67,8 @@ Then say: *"connect to my workspace"*.
 
 - **Pre-approved (no prompt) while a skill is active**: only narrow reads —
   `tireless list`, `tireless ping`, `tireless users show`,
-  `tireless version`, and the bundled read-only probe scripts
-  (`tireless-preflight`, `tireless-verify`, `tireless-urls`,
+  `tireless version`, `tireless-clip status`, and the bundled read-only probe
+  scripts (`tireless-preflight`, `tireless-verify`, `tireless-urls`,
   `tireless-clip-doctor`).
 - **Prompt-gated (your client asks)**: installers (`curl … | sh`), logins,
   `tireless config-ssh`, `tireless-clip setup`, and **every** `ssh` command.

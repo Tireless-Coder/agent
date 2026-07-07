@@ -1,7 +1,7 @@
 ## Tireless workspace (cloud dev computer)
 - The user has a Tireless cloud dev computer (tirelesscode.com); SSH alias: `ssh <workspace>.tireless`.
 - Run remote commands with native ssh: `ssh <workspace>.tireless 'cd <dir> && <cmd>'` — every call is a fresh shell, so always cd-prefix. Probes: add `-o BatchMode=yes -o ConnectTimeout=10`. Jobs >2 min: `tmux new -d` then poll. Cap output with `| tail -100`.
-- Prefer the tireless_* MCP tools (status, login, list/get workspace, actions, watch_state, share_port, open_editor, clipboard_status, doctor) when available; full skills live in ~/.agents/skills/tireless/.
+- Prefer the tireless_* MCP tools (status, login, connect_workspace — the one-call connect pipeline — list/get workspace, actions, watch_state, share_port, open_editor, clipboard_status, doctor) when available; full skills live in ~/.agents/skills/tireless/.
 - Logins are interactive and belong in the USER'S OWN terminal: `tireless-connect login` (platform + regions) or `tireless login <cpUrl>` (single region). Never ask for or echo tokens in chat.
 - Never run `tireless start|stop|delete|create` and never mutate workspaces via the Coder API — the platform reconciler owns lifecycle. Restart/suspend/resume only via tireless_workspace_action; deletion is dashboard-only.
 - Creating a workspace costs money: only via tireless_create_workspace, and only after the user explicitly says yes in the conversation.

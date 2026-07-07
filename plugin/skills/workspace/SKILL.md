@@ -8,7 +8,9 @@ allowed-tools: Bash(tireless-urls*), Bash(tireless list*), Bash(tireless ping*),
 
 Remote work happens over the agent's native Bash with plain ssh — there is
 deliberately NO MCP exec tool, so your client's own permission system governs
-every remote command. Full idiom reference: `reference/remote-exec.md`.
+every remote command. Full idiom reference (Claude Code:
+`${CLAUDE_PLUGIN_ROOT}/reference/remote-exec.md`; Codex/Cursor:
+`~/.agents/skills/tireless/reference/remote-exec.md`).
 
 ## Remote-exec idioms (always)
 
@@ -53,7 +55,9 @@ surface (editor link, terminal link, clipboard page) instead.
 Never run `tireless start|stop|delete|create|update`, and never mutate
 workspaces through the Coder API. The platform reconciler owns
 `desired_state`; out-of-band mutations are detected and reverted, and can
-leave the workspace inconsistent — `reference/lifecycle.md` explains why.
+leave the workspace inconsistent — the lifecycle reference (Claude Code:
+`${CLAUDE_PLUGIN_ROOT}/reference/lifecycle.md`; Codex/Cursor:
+`~/.agents/skills/tireless/reference/lifecycle.md`) explains why.
 
 Allowed lifecycle, always through the platform:
 

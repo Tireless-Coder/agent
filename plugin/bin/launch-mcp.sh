@@ -8,8 +8,9 @@
 # Resolution order: tireless-connect on PATH, then the plugin's persistent
 # data dir. If the binary is missing — or older than the platform's published
 # minimum (GET /api/agent/version) — download the current build from the
-# stable public URL and atomically install it into ${CLAUDE_PLUGIN_DATA}/bin,
-# so the plugin stays genuinely "one thing" to install.
+# stable public URL, verify it against the published SHA256SUMS, and
+# atomically install it into ${CLAUDE_PLUGIN_DATA}/bin, so the plugin stays
+# genuinely "one thing" to install.
 set -eu
 
 log() { printf 'tireless: %s\n' "$*" >&2; }
@@ -64,12 +65,36 @@ else
   fi
 fi
 
+# sha256 of a file, portable across darwin (shasum) and linux (sha256sum).
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 if [ "$NEED_DOWNLOAD" = 1 ]; then
   url="$APP_ORIGIN/connect/bin/$os-$arch"
   log "downloading tireless-connect ($os/$arch) from $url"
   mkdir -p "$BIN_DIR"
   tmp="$BIN_DIR/.tireless-connect.$$"
+  ok=0
   if curl -fsSL "$url" -o "$tmp"; then
+    # Integrity gate: SHA256SUMS is published next to the binaries and served
+    # via the same stable redirect, so a corrupted or tampered bucket object
+    # can never be exec'd. Fail closed — an unverified download never runs.
+    expected="$(curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" 2>/dev/null \
+      | awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' || true)"
+    if [ -z "$expected" ]; then
+      log "checksum manifest unavailable — refusing the downloaded binary"
+    elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
+      log "checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary"
+    else
+      ok=1
+    fi
+  fi
+  if [ "$ok" = 1 ]; then
     chmod 0755 "$tmp"
     # Same-directory rename: atomic swap, never a half-written binary.
     mv -f "$tmp" "$MANAGED_BIN"
