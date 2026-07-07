@@ -1,0 +1,5 @@
+#!/bin/sh
+# PATH-visible wrapper for scripts/clip-doctor.sh — see tireless-preflight.
+set -eu
+dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+exec sh "$dir/scripts/clip-doctor.sh" "$@"

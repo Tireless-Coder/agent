@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>You are connected to Tireless and the user asks you to run tests on their workspace named "blog". Using the connector's read-only tools, determine the exact SSH host string you would pass to ssh (not the full command, just the host). Answer with the host string only.</question>
+    <answer>blog.tireless</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Your user's workspace has dev servers listening on ports 3000 and 19985, and they ask you to make both publicly previewable. Using the connector's tooling, determine which one of the two port numbers can never be shared. Answer with the port number only.</question>
+    <answer>19985</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A workspace named "alpha" belongs to a user whose Coder username is "markus-9f3a1c", on a cell whose wildcard app domain is "eu.ws.tirelesscode.com". Rebuild the exact HTTPS URL of its code-server app (slug "code"), including the trailing slash.</question>
+    <answer>https://code--main--alpha--markus-9f3a1c.eu.ws.tirelesscode.com/</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user wants to open their workspace named "api" in VS Code Remote-SSH at the default workspace home directory. What exact deeplink URI does the connector produce?</question>
+    <answer>vscode://vscode-remote/ssh-remote+api.tireless/home/dev</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Rebuild the exact web terminal URL for workspace "beta" owned by Coder username "dev-1a2b3c" on the control plane https://link.tirelesscode.com (the workspace template's single agent applies).</question>
+    <answer>https://link.tirelesscode.com/@dev-1a2b3c/beta.main/terminal</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user reports that pasting screenshots into Claude Code on their workspace stopped working. Diagnosis shows the ssh config include and remote shim are fine, but the local clipboard daemon is not answering its probe. Which doctor fix code does this condition map to? Answer with the code only.</question>
+    <answer>E_CLIP_DEAD</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A workspace's observed state is "suspended" and the user asks you to make it reachable again. Which single action value do you pass to tireless_workspace_action? Answer with the action value only.</question>
+    <answer>resume</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>You call tireless_create_workspace for the first time in a conversation, without any confirmation field. What boolean value does the "requires_confirmation" field of the result hold? Answer true or false.</question>
+    <answer>true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user, worried about agent autonomy, asks whether any tool exposed by the tireless MCP server can delete one of their workspaces. Inspect the full tool list and answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Doctor reports that the managed SSH host block for the workspace alias is missing from the user's ssh config. What exact single command fixes it?</question>
+    <answer>tireless config-ssh --yes</answer>
+  </qa_pair>
+</evaluation>

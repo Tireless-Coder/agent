@@ -1,0 +1,13 @@
+{
+  "name": "tireless",
+  "owner": {
+    "name": "Tireless Code"
+  },
+  "plugins": [
+    {
+      "name": "tireless",
+      "source": "./plugin",
+      "description": "Connect AI coding agents to your Tireless cloud dev computer: install, authenticate, run commands over SSH, open editors, share preview ports, fix clipboard paste, and self-diagnose."
+    }
+  ]
+}

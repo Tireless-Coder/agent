@@ -1,0 +1,7 @@
+#!/bin/sh
+# PATH-visible wrapper (Claude Code adds plugin bin/ to the Bash PATH) so
+# skills can pre-approve the narrow command `tireless-preflight` instead of
+# an uninstallable absolute path. Read-only.
+set -eu
+dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+exec sh "$dir/scripts/preflight.sh" "$@"
