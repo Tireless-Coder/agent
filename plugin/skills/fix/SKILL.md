@@ -47,7 +47,7 @@ layer deeper only where it points:
 | `E_NET_PLATFORM` | platform API unreachable | Re-probe `curl -sS -o /dev/null -w '%{http_code}' https://app.tirelesscode.com/api/regions` (any HTTP status — 401 included — means reachable; only a transport error is a network problem); probe general connectivity; ask about VPN/proxy/firewall. Unresolvable → support summary. |
 | `E_TOKEN_INVALID` | platform bearer token rejected | User runs `tireless-connect login` in their OWN terminal, replies "done"; re-run doctor. |
 | `E_TOKEN_EXPIRED` | token expired and refresh failed | Same fix as E_TOKEN_INVALID. |
-| `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | User runs `tireless login <cpUrl>` in their OWN terminal (browser one-click; token pasted THERE, never in chat), replies "done"; re-run doctor. |
+| `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | User runs `tireless-connect login` in their OWN terminal — it opens the region's Coder sign-in automatically (no button to click); they paste the token it shows THERE, never in chat, reply "done"; re-run doctor. (Raw-CLI fallback: `tireless login <cpUrl>`.) |
 | `E_SSH_BLOCK` | managed ssh block missing | `tireless config-ssh --yes` |
 | `E_CLIP_INCLUDE` | clip include markers missing from ~/.ssh/config | `tireless-clip setup` |
 | `E_CLIP_DEAD` | local clipboard daemon not answering | `tireless-clip ensure-daemon`, then reconnect the ssh session (the daemon rides an ssh RemoteForward). |

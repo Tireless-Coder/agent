@@ -7,5 +7,5 @@
 - Creating a workspace costs money: only via tireless_create_workspace, and only after the user explicitly says yes in the conversation.
 - Never publicly share ports 22, 13337, 6800, 6801, 6810, 19985 — they are the workspace itself.
 - Image paste into agents on the workspace is Ctrl+V (not Cmd+V); if broken run `tireless-clip ensure-daemon` and reconnect, or use the dashboard Paste page (images stay valid 5 minutes).
-- Editors: vscode://vscode-remote/ssh-remote+<workspace>.tireless/home/dev (cursor:// twin).
+- Editors: connect_workspace first, then open_editor. Claude uses editor=claude (new local session with a prefilled Tireless connection request); VS Code uses vscode://vscode-remote/ssh-remote+<workspace>.tireless/home/dev/<workspace> (cursor:// twin).
 - If anything fails, diagnose with the tireless_doctor tool (or ~/.agents/skills/tireless/scripts/preflight.sh) and apply only the mapped fix.

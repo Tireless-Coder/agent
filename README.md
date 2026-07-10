@@ -5,7 +5,8 @@ Connect AI coding agents — Claude Code, Codex, Cursor — to your
 then tell your agent **"connect to my workspace"**: it installs the
 `tireless` CLI and clipboard companion, authenticates, writes your SSH
 config, verifies the connection, and from then on runs commands on your
-workspace, opens editors, shares preview ports, fixes clipboard paste, and
+workspace, connects Claude Code to it or opens VS Code in the right remote
+project, shares preview ports, fixes clipboard paste, and
 diagnoses its own failures.
 
 ## Install
@@ -51,6 +52,12 @@ Then say: *"connect to my workspace"*.
 - **Remote exec is native ssh**: agents run
   `ssh <workspace>.tireless 'cd <dir> && …'` through their own Bash tool, so
   your client's permission system governs every remote command.
+- **Connect, then open**: `tireless_open_editor` launches VS Code/Cursor over
+  Remote-SSH into `/home/dev/<workspace>`, or starts a fresh local Claude Code
+  session with a visible, prefilled Tireless connection request. Claude Code
+  deep links require v2.1.91+ and the user still presses Enter before the
+  request is sent. If the Tireless plugin is not installed in that Claude
+  client, the prompt falls back to the already-configured native SSH alias.
 - **Auth**: `tireless-connect login` does loopback OAuth (PKCE, public
   client `tireless-connect`, `127.0.0.1:52180-52182`) against the Tireless
   platform, then chains the per-region `tireless login <cpUrl>` in your own

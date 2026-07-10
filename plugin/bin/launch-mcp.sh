@@ -33,19 +33,38 @@ case "$(uname -m)" in
   *) log "unsupported architecture '$(uname -m)'"; exit 1 ;;
 esac
 
-BIN=""
-if command -v tireless-connect >/dev/null 2>&1; then
-  BIN="$(command -v tireless-connect)"
-elif [ -x "$MANAGED_BIN" ]; then
-  BIN="$MANAGED_BIN"
-fi
-
 # 0 when $1 is a strictly lower version than $2 (x.y.z numeric compare).
 ver_lt() {
   if [ "$1" = "$2" ]; then return 1; fi
   lowest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | head -n1)"
   [ "$lowest" = "$1" ]
 }
+
+version_of() {
+  "$1" version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*' | head -n1 || true
+}
+
+# Prefer whichever installed copy is newer. This avoids re-downloading into
+# the managed data dir on every launch when an older PATH copy also exists,
+# while still letting a newer development build on PATH win.
+PATH_BIN=""
+if command -v tireless-connect >/dev/null 2>&1; then
+  PATH_BIN="$(command -v tireless-connect)"
+fi
+BIN=""
+if [ -n "$PATH_BIN" ] && [ -x "$MANAGED_BIN" ]; then
+  path_version="$(version_of "$PATH_BIN")"
+  managed_version="$(version_of "$MANAGED_BIN")"
+  if [ -n "$managed_version" ] && { [ -z "$path_version" ] || ver_lt "$path_version" "$managed_version"; }; then
+    BIN="$MANAGED_BIN"
+  else
+    BIN="$PATH_BIN"
+  fi
+elif [ -n "$PATH_BIN" ]; then
+  BIN="$PATH_BIN"
+elif [ -x "$MANAGED_BIN" ]; then
+  BIN="$MANAGED_BIN"
+fi
 
 # Staleness check against the version manifest. Network failures are
 # tolerated: a connected-but-stale binary beats no MCP server at all.
@@ -58,7 +77,7 @@ else
   if [ -n "$min" ]; then
     # TODO(live-verify): `tireless-connect version` output format — the first
     # x.y.z in its output is assumed to be the binary version.
-    current="$("$BIN" version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*' | head -n1 || true)"
+    current="$(version_of "$BIN")"
     if [ -z "$current" ] || ver_lt "$current" "$min"; then
       NEED_DOWNLOAD=1
     fi

@@ -4,11 +4,12 @@
 #
 #   Subdomain app:  https://{slug}--main--{workspace}--{username}.{wildcard}/
 #   Web terminal:   {cpUrl}/@{username}/{workspace}.main/terminal
-#   VS Code:        vscode://vscode-remote/ssh-remote+{workspace}.tireless/home/dev
-#   Cursor:         cursor://vscode-remote/ssh-remote+{workspace}.tireless/home/dev
+#   Claude Code:    claude-cli://open?q={prefilled Tireless connection request}
+#   VS Code:        vscode://vscode-remote/ssh-remote+{workspace}.tireless/home/dev/{workspace}
+#   Cursor:         cursor://vscode-remote/ssh-remote+{workspace}.tireless/home/dev/{workspace}
 #
-# "main" is the single Coder agent name in the workspace template; /home/dev
-# is the fixed workspace home dir. The username comes from
+# "main" is the single Coder agent name in the workspace template; projects
+# live in /home/dev/{workspace}. The username comes from
 # `tireless users show me`. The wildcard app domain is not discoverable from
 # the CLI — pass TIRELESS_WILDCARD_DOMAIN (e.g. eu.ws.tirelesscode.com) or
 # take app links from the tireless_get_workspace connection card instead.
@@ -63,10 +64,11 @@ echo "WS=$WS"
 echo "SSH_ALIAS=$WS.tireless"
 echo "USER=$USERNAME"
 echo "CP_URL=$CP_URL"
-echo "VSCODE=vscode://vscode-remote/ssh-remote+$WS.tireless/home/dev"
+echo "CLAUDE=claude-cli://open?q=Connect%20to%20my%20Tireless%20workspace%20$WS%20and%20work%20in%20%2Fhome%2Fdev%2F$WS.%20Use%20the%20Tireless%20plugin%20when%20available%3B%20otherwise%20use%20the%20native%20SSH%20alias%20$WS.tireless%20and%20keep%20every%20command%20and%20file%20operation%20on%20the%20remote%20workspace."
+echo "VSCODE=vscode://vscode-remote/ssh-remote+$WS.tireless/home/dev/$WS"
 # NOTE(live-verify): Cursor's URI authority has varied across releases
 # (cursor://vscode-remote/… vs cursor://anysphere.remote-ssh/…).
-echo "CURSOR=cursor://vscode-remote/ssh-remote+$WS.tireless/home/dev"
+echo "CURSOR=cursor://vscode-remote/ssh-remote+$WS.tireless/home/dev/$WS"
 
 if [ "$CP_URL" != unknown ] && [ "$USERNAME" != unknown ]; then
   echo "TERMINAL=$CP_URL/@$USERNAME/$WS.main/terminal"

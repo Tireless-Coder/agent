@@ -89,8 +89,9 @@ and would hang your Bash tool. Auth happens in Step 2 instead.
 
 - If `CONNECT=ok`: tell the user — "Run `tireless-connect login` in your own
   terminal. A browser opens for a one-click approval; if a region asks, it
-  chains `tireless login` for you (paste the token into that terminal, never
-  here). Say 'done' when it finishes."
+  opens that region's Coder sign-in automatically — no button to click, just
+  paste the token it shows into that terminal, never here. Say 'done' when it
+  finishes."
 - If `CONNECT=missing`: tell the user to run `tireless login <cpUrl>` in
   their own terminal instead, then say "done". To find `<cpUrl>` read the CP
   case from the served installer (read-only):
@@ -158,5 +159,12 @@ dashboard or tireless_* MCP tools.
 ## Step 8 — report
 
 Tell the user what now works, concretely: "Connected. I can run commands on
-`<workspace>` over ssh, open VS Code/Cursor there, share preview ports, and
-Ctrl+V image paste into agents on the workspace works."
+`<workspace>` over ssh, start a local Claude Code session connected to it, open
+VS Code/Cursor in its remote project, share preview ports, and use Ctrl+V image
+paste in agents on the workspace."
+
+If the user's original request included VS Code or another external surface,
+continue after verification by calling `tireless_open_editor` with that editor.
+For Claude Code, this verified plugin session is already connected; launch
+`editor: "claude"` only if they explicitly asked for a fresh/new session. Do
+not make them repeat the request.

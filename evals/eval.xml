@@ -12,8 +12,12 @@
     <answer>https://code--main--alpha--markus-9f3a1c.eu.ws.tirelesscode.com/</answer>
   </qa_pair>
   <qa_pair>
-    <question>The user wants to open their workspace named "api" in VS Code Remote-SSH at the default workspace home directory. What exact deeplink URI does the connector produce?</question>
-    <answer>vscode://vscode-remote/ssh-remote+api.tireless/home/dev</answer>
+    <question>The user wants to open their workspace named "api" in VS Code Remote-SSH at its default project directory. What exact deeplink URI does the connector produce?</question>
+    <answer>vscode://vscode-remote/ssh-remote+api.tireless/home/dev/api</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user asks to open workspace "api" in a fresh Claude Code session. Which editor value should be passed to tireless_open_editor? Answer with the value only.</question>
+    <answer>claude</answer>
   </qa_pair>
   <qa_pair>
     <question>Rebuild the exact web terminal URL for workspace "beta" owned by Coder username "dev-1a2b3c" on the control plane https://link.tirelesscode.com (the workspace template's single agent applies).</question>

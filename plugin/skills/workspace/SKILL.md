@@ -1,7 +1,7 @@
 ---
 name: workspace
-description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer (ssh <workspace>.tireless), opening VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, restarting/suspending/resuming a workspace, or creating a new one.
-allowed-tools: Bash(tireless-urls*), Bash(tireless list*), Bash(tireless ping*), Bash(tireless users show*)
+description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer or server (ssh <workspace>.tireless), opening Claude Code/VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, restarting/suspending/resuming a workspace, or creating a new one.
+allowed-tools: Bash(tireless-urls*), Bash(tireless-verify*), Bash(tireless list*), Bash(tireless ping*), Bash(tireless users show*)
 ---
 
 # Working on a Tireless workspace
@@ -29,14 +29,43 @@ every remote command. Full idiom reference (Claude Code:
 
 ## Open editors and URLs
 
+Opening an editor is a connect-then-launch flow. If this conversation has not
+already received a successful connection card for the selected workspace:
+
+1. Resolve the workspace with `tireless_list_workspaces` (ask only when more
+   than one workspace matches the user's request).
+2. Call `tireless_connect_workspace` and handle any `action_required` card.
+3. Once its connection state is `ready`, run `tireless-verify <workspace>`
+   (Codex/Cursor:
+   `sh ~/.agents/skills/tireless/scripts/verify.sh <workspace>`).
+   `VERIFY=fail` means switch to the fix skill; do not launch.
+4. Only after `VERIFY=ok`, call `tireless_open_editor` with the requested
+   editor.
+
+This makes “open my server in VS Code” one intent: the user should not have to
+ask separately for SSH setup, resume, verification, and launch.
+
+In the Claude Code plugin itself, a plain “open/connect my server in Claude
+Code” means connect THIS session; the successful connection card plus
+`VERIFY=ok` completes the request. Call `tireless_open_editor` with
+`editor: "claude"` only when the user explicitly asks for a fresh/new/another
+Claude Code session, so the plugin does not open a duplicate window
+unexpectedly.
+
 Run `tireless-urls <ws> [slug|port]`
 (Codex/Cursor: `sh ~/.agents/skills/tireless/scripts/urls.sh <ws> [slug|port]`)
 to get KEY=val links, or take the `links` object from `tireless_get_workspace`
 / `tireless_connect_workspace` (authoritative — includes code, desktop,
 chrome, terminal, vscode, cursor, clipboard).
 
-- VS Code: `vscode://vscode-remote/ssh-remote+<ws>.tireless/home/dev`
-- Cursor: `cursor://vscode-remote/ssh-remote+<ws>.tireless/home/dev`
+- Fresh Claude Code session: call `tireless_open_editor` with
+  `editor: "claude"`. It opens a new LOCAL Claude Code terminal with a visible,
+  prefilled request to connect through the Tireless plugin or the already
+  configured native SSH alias. Tell the user to review it and press Enter. This
+  is intentionally not a fake remote `cwd` deep link. If the URL handler does
+  not open, use the tool's returned prompt with a manually started `claude`.
+- VS Code: `vscode://vscode-remote/ssh-remote+<ws>.tireless/home/dev/<ws>`
+- Cursor: `cursor://vscode-remote/ssh-remote+<ws>.tireless/home/dev/<ws>`
 - Web terminal / desktop: use the links from the tools above.
 - Open deeplinks for the user with `open <url>` (macOS) / `xdg-open <url>`
   (Linux), or the `tireless_open_editor` MCP tool.
