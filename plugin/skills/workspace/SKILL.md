@@ -26,6 +26,9 @@ every remote command. Full idiom reference (Claude Code:
   build logs burn your context for nothing.
 - Use only the `<ws>.tireless` alias. Never `ssh dev@<ip>` with relaxed
   host-key checking, and never wrap remote exec in an MCP tool.
+- Moving the CURRENT local work + session context onto the workspace (code,
+  uncommitted changes, env files, handoff brief, autonomous continuation) is
+  the continue skill — don't hand-roll it here.
 
 ## Open editors and URLs
 

@@ -1,0 +1,5 @@
+#!/bin/sh
+# PATH-visible wrapper for scripts/handoff-launch.sh — see tireless-preflight.
+set -eu
+dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+exec sh "$dir/scripts/handoff-launch.sh" "$@"

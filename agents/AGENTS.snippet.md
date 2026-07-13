@@ -8,4 +8,5 @@
 - Never publicly share ports 22, 13337, 6800, 6801, 6810, 19985 — they are the workspace itself.
 - Image paste into agents on the workspace is Ctrl+V (not Cmd+V); if broken run `tireless-clip ensure-daemon` and reconnect, or use the dashboard Paste page (images stay valid 5 minutes).
 - Editors: connect_workspace first, then open_editor. Claude uses editor=claude (new local session with a prefilled Tireless connection request); VS Code uses vscode://vscode-remote/ssh-remote+<workspace>.tireless/home/dev/<workspace> (cursor:// twin).
+- "Continue this on my workspace" = the continue skill: probe with ~/.agents/skills/tireless/scripts/handoff-state.sh, sync branch + uncommitted work + env files + a handoff brief with handoff-sync.sh (direct git-over-ssh, no GitHub creds needed), start the remote agent in tmux with handoff-launch.sh. Briefs live at ~/.timeless/handoffs/ (newest: latest.md).
 - If anything fails, diagnose with the tireless_doctor tool (or ~/.agents/skills/tireless/scripts/preflight.sh) and apply only the mapped fix.

@@ -110,7 +110,7 @@ fi
 # 2. Skills (shared by Codex and Cursor; both read SKILL.md natively).
 echo "[..] installing skills to $SKILLS_DEST"
 mkdir -p "$SKILLS_DEST"
-for d in connect fix workspace clipboard; do
+for d in connect fix workspace clipboard continue; do
   rm -rf "${SKILLS_DEST:?}/$d"
   cp -R "$SRC/plugin/skills/$d" "$SKILLS_DEST/$d"
 done
@@ -150,7 +150,7 @@ if [ "$DO_CURSOR" = 1 ]; then
     printf 'alwaysApply: true\n'
     printf -- '---\n\n'
     cat "$SRC/agents/AGENTS.snippet.md"
-    printf '\nFull skills: ~/.agents/skills/tireless/ (connect, fix, workspace, clipboard).\n'
+    printf '\nFull skills: ~/.agents/skills/tireless/ (connect, fix, workspace, clipboard, continue).\n'
   } >"$rules_dir/tireless.mdc"
   echo "[ok] wrote $rules_dir/tireless.mdc"
 fi

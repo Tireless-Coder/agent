@@ -6,8 +6,8 @@ then tell your agent **"connect to my workspace"**: it installs the
 `tireless` CLI and clipboard companion, authenticates, writes your SSH
 config, verifies the connection, and from then on runs commands on your
 workspace, connects Claude Code to it or opens VS Code in the right remote
-project, shares preview ports, fixes clipboard paste, and
-diagnoses its own failures.
+project, shares preview ports, fixes clipboard paste, hands a session off to
+continue autonomously on the workspace, and diagnoses its own failures.
 
 ## Install
 
@@ -33,10 +33,11 @@ Then say: *"connect to my workspace"*.
 | `plugin/skills/fix` | Doctor decision tree; every `E_*` fix code maps to exactly one action; dead ends emit a support summary. |
 | `plugin/skills/workspace` | Remote-exec idioms (`ssh <ws>.tireless 'cd … && …'`), editor deeplinks, preview ports, lifecycle guardrails. |
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
+| `plugin/skills/continue` | "Continue this on my workspace": one-command git-over-ssh sync (branch + uncommitted work + env files), handoff brief at `~/.timeless/handoffs/`, autonomous tmux launch steerable from claude.ai. |
 | `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. |
 | `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (SHA256SUMS-verified), then `exec tireless-connect mcp`. |
 | `install.sh` | Multi-client installer for Codex/Cursor (`--codex --cursor --skills-only --all`). Marker-delimited, never duplicates. |
-| `agents/AGENTS.snippet.md` | 10-line AGENTS.md degradation of the connect skill. |
+| `agents/AGENTS.snippet.md` | Compact AGENTS.md degradation of the skills. |
 | `evals/eval.xml` | Read-only MCP evaluations (mcp-builder format). |
 
 ## How it works
@@ -76,9 +77,11 @@ Then say: *"connect to my workspace"*.
   `tireless list`, `tireless ping`, `tireless users show`,
   `tireless version`, `tireless-clip status`, and the bundled read-only probe
   scripts (`tireless-preflight`, `tireless-verify`, `tireless-urls`,
-  `tireless-clip-doctor`).
+  `tireless-clip-doctor`, `tireless-handoff-state`).
 - **Prompt-gated (your client asks)**: installers (`curl … | sh`), logins,
-  `tireless config-ssh`, `tireless-clip setup`, and **every** `ssh` command.
+  `tireless config-ssh`, `tireless-clip setup`, the handoff mutations
+  (`tireless-handoff-sync`, `tireless-handoff-launch` — they write to your
+  workspace and start an agent on it), and **every** `ssh` command.
 - **Tokens never transit the chat**: logins happen in your own terminal; the
   skills instruct agents to never request, echo, or log tokens.
 - **Server-side limits don't trust the agent**: agent-scoped tokens get
@@ -99,9 +102,9 @@ tireless-agent/
 │   ├── .claude-plugin/plugin.json
 │   ├── .mcp.json                     # → bin/launch-mcp.sh (stdio)
 │   ├── bin/                          # launcher + PATH-visible script wrappers
-│   ├── skills/{connect,fix,workspace,clipboard}/SKILL.md
+│   ├── skills/{connect,fix,workspace,clipboard,continue}/SKILL.md
 │   ├── scripts/                      # POSIX sh, KEY=val output, shellcheck-clean
-│   └── reference/{remote-exec,lifecycle}.md
+│   └── reference/{remote-exec,lifecycle,handoff}.md
 ├── install.sh                        # Codex/Cursor installer
 ├── agents/AGENTS.snippet.md
 └── evals/eval.xml

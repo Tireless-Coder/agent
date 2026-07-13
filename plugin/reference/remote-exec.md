@@ -67,6 +67,11 @@ inspect a file: `ssh myws.tireless 'sed -n 1,120p ~/project/src/main.go'`.
 For edits, prefer git (push/pull) or remote editors over heredocs — quoting
 bugs in `ssh 'cat > file <<EOF'` waste turns.
 
+Moving a whole working tree (branch + uncommitted changes + env files) onto
+the workspace is `tireless-handoff-sync` — one command, direct
+git-over-ssh, no GitHub credentials involved (see `handoff.md`). Bring work
+back with `git fetch ssh://myws.tireless/home/dev/myws/<repo> <branch>`.
+
 ## Quoting
 
 Single-quote the whole remote command; inside it, prefer double quotes.
