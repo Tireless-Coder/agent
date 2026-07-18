@@ -43,4 +43,24 @@
     <question>Doctor reports that the managed SSH host block for the workspace alias is missing from the user's ssh config. What exact single command fixes it?</question>
     <answer>tireless config-ssh --yes</answer>
   </qa_pair>
+  <qa_pair>
+    <question>The user finds a marketplace listing they like via tireless_marketplace_browse and asks you to rent it for them right here in chat. Inspect the full tool list — does the tireless MCP server expose any tool that can rent or purchase a marketplace listing? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A tireless_install_app call returns a secret admin password under revealedParams. How many times will the platform ever show that value? Answer with a single word.</question>
+    <answer>once</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>You call tireless_game_port with open=true for port 25565 on the user's workspace and it succeeds. Is the port reachable from the public internet the instant the call returns, and how do you tell when it actually is?</question>
+    <answer>Not instantly — the firewall change applies asynchronously and takes a moment. The exposure row carries an appliedAt field that starts null and is set once the change is live; only then is 25565 reachable from the public internet.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The user asks you to open raw TCP port 8080 as a game port, but tireless_game_port refuses because 8080 is not on the platform's list of permitted game ports. What is that list called? Answer with one word.</question>
+    <answer>allowlist</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless_doctor reports the fix code E_EDGE_BLOCK. Will having the user re-run tireless-connect login fix it? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
 </evaluation>

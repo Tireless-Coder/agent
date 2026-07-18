@@ -1,6 +1,6 @@
 ---
 name: workspace
-description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer or server (ssh <workspace>.tireless), opening Claude Code/VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, restarting/suspending/resuming a workspace, or creating a new one.
+description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer or server (ssh <workspace>.tireless), opening Claude Code/VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, checking why a workspace is slow (health/metrics), opening or closing the game server port, reviewing what is exposed to the internet, restarting/suspending/resuming a workspace, or creating a new one.
 allowed-tools: Bash(tireless-urls*), Bash(tireless-verify*), Bash(tireless list*), Bash(tireless ping*), Bash(tireless users show*)
 ---
 
@@ -81,6 +81,38 @@ Share a dev server publicly only via the `tireless_share_port` MCP tool
 desktop, clipboard); sharing one would expose an unauthenticated control
 surface. If the user asks for one of these, explain that and offer the proper
 surface (editor link, terminal link, clipboard page) instead.
+
+## Health — "why is my VM slow"
+
+`tireless_workspace_health {workspace, range?}` (read-only) returns the
+workspace's current health value plus CPU/memory/disk metrics over the
+range — one flat result, nothing nested deeper. Reach for it
+whenever the user reports slowness or flakiness — diagnose from the numbers
+before touching anything. Pegged CPU or a full disk usually names the next
+step (find the process / free the space over ssh); a stale agent heartbeat
+is the fix skill's E_HEARTBEAT_STALE path, not a reason to restart blindly.
+
+## Game port (raw TCP — confirm before opening)
+
+`tireless_game_port {workspace, port, open}` opens or closes the workspace's
+allowlisted raw-TCP game port. The allowlist is currently exactly one port:
+Minecraft's 25565.
+
+- Open only on the user's explicit ask IN THIS CONVERSATION — never as a
+  side effect of an install or a guess at what they meant.
+- Before opening, say what it means in plain words: anyone on the internet
+  can reach that port directly — there is no login in front of it, the game
+  server itself is the only thing answering. Get their go-ahead first.
+- Only the allowlisted port works; the platform refuses anything else —
+  including, as ever, the reserved ports above.
+- Closing (`open: false`) is always fine, no confirmation needed.
+
+## Exposure overview
+
+`tireless_exposure_overview {}` (read-only) lists everything of the user's
+that is currently reachable from the internet — shared preview ports and
+open game ports. Use it to answer "what's exposed right now?", and after
+opening or closing a game port to show the resulting state.
 
 ## Lifecycle — HARD PROHIBITION
 

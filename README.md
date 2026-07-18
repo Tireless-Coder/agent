@@ -31,7 +31,8 @@ Then say: *"connect to my workspace"*.
 |---|---|
 | `plugin/skills/connect` | Flagship onboarding: preflight → install → auth → ssh config → clipboard → verify. Idempotent. |
 | `plugin/skills/fix` | Doctor decision tree; every `E_*` fix code maps to exactly one action; dead ends emit a support summary. |
-| `plugin/skills/workspace` | Remote-exec idioms (`ssh <ws>.tireless 'cd … && …'`), editor deeplinks, preview ports, lifecycle guardrails. |
+| `plugin/skills/workspace` | Remote-exec idioms (`ssh <ws>.tireless 'cd … && …'`), editor deeplinks, preview ports, health/metrics, game port + exposure overview, lifecycle guardrails. |
+| `plugin/skills/marketplace` | Read-only marketplace browsing (renting stays on the dashboard), installable-tools catalog, installs with once-only revealed secrets, install status. |
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
 | `plugin/skills/continue` | "Continue this on my workspace": one-command git-over-ssh sync (branch + uncommitted work + env files), handoff brief at `~/.timeless/handoffs/`, autonomous tmux launch steerable from claude.ai. |
 | `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. |
@@ -42,13 +43,19 @@ Then say: *"connect to my workspace"*.
 
 ## How it works
 
-- **MCP server (stdio)**: `tireless-connect mcp` exposes exactly twelve
-  tools — `tireless_status`, `tireless_login`, `tireless_connect_workspace`,
+- **MCP server (stdio)**: `tireless-connect mcp` exposes exactly twenty
+  tools. Connection & repair: `tireless_status`, `tireless_login`,
+  `tireless_connect_workspace`, `tireless_doctor`. Workspaces:
   `tireless_list_workspaces`, `tireless_get_workspace`,
   `tireless_workspace_action`, `tireless_create_workspace`,
-  `tireless_watch_state`, `tireless_share_port`, `tireless_open_editor`,
-  `tireless_clipboard_status`, `tireless_doctor`. There is **no exec tool**
-  and **no delete anywhere**; `tireless_workspace_action` allows only
+  `tireless_watch_state`, `tireless_workspace_health`. Surfaces:
+  `tireless_share_port`, `tireless_open_editor`, `tireless_clipboard_status`,
+  `tireless_game_port`, `tireless_exposure_overview`. Marketplace & installs:
+  `tireless_marketplace_browse`, `tireless_marketplace_listing`,
+  `tireless_recipes_catalog`, `tireless_install_app`,
+  `tireless_install_status`. There is **no exec tool**, **no delete
+  anywhere**, and **no purchase tool** — renting marketplace hardware is
+  dashboard-only; `tireless_workspace_action` allows only
   `restart|suspend|resume`.
 - **Remote exec is native ssh**: agents run
   `ssh <workspace>.tireless 'cd <dir> && …'` through their own Bash tool, so
@@ -70,6 +77,12 @@ Then say: *"connect to my workspace"*.
 - **The Claude plugin is self-contained**: its launcher downloads
   `tireless-connect` from `https://app.tirelesscode.com/connect/bin/<os>-<arch>`
   on first session and keeps it current against `GET /api/agent/version`.
+
+**Prefer plain HTTP?** The dashboard's API page
+(`https://app.tirelesscode.com/dashboard/api`) mints personal API keys that
+hit the same API with the same permissions as the connector — handy for
+scripts and CI. Docs: <https://tirelesscode.com/docs/api>. The connector
+itself keeps using its OAuth login; that stays the primary path for agents.
 
 ## Security notes
 
@@ -102,7 +115,7 @@ tireless-agent/
 │   ├── .claude-plugin/plugin.json
 │   ├── .mcp.json                     # → bin/launch-mcp.sh (stdio)
 │   ├── bin/                          # launcher + PATH-visible script wrappers
-│   ├── skills/{connect,fix,workspace,clipboard,continue}/SKILL.md
+│   ├── skills/{connect,fix,workspace,marketplace,clipboard,continue}/SKILL.md
 │   ├── scripts/                      # POSIX sh, KEY=val output, shellcheck-clean
 │   └── reference/{remote-exec,lifecycle,handoff}.md
 ├── install.sh                        # Codex/Cursor installer
