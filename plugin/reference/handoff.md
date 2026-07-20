@@ -7,9 +7,10 @@ background an agent (or maintainer) needs when something is off-script.
 ## How code travels: direct git-over-ssh, no GitHub
 
 `tireless-handoff-sync` pushes straight to the workspace through the
-existing `<ws>.tireless` alias:
+workspace's ssh alias (the resolver in `scripts/alias.sh` turns a bare
+name into the regional form, e.g. `myws.eu-central.tireless`):
 
-1. `git push ssh://<ws>.tireless<target-dir> +HEAD:refs/tireless/handoff` —
+1. `git push ssh://<alias><target-dir> +HEAD:refs/tireless/handoff` —
    a namespaced temp ref, so the remote's checked-out branch ref is never
    touched and `receive.denyCurrentBranch` can never fire. The `+` force is
    safe because divergence was checked explicitly first (fetch remote head,
@@ -26,11 +27,12 @@ existing `<ws>.tireless` alias:
 Why not GitHub push+pull: the workspace has no GitHub credentials — no gh
 CLI in the image, no Coder external auth. Every GitHub variant needs new
 trust material on the VM; moving code between two machines the user already
-controls needs none. Work comes BACK the same way (`git fetch
-ssh://<ws>.tireless/...`), and GitHub pushes keep happening from the laptop.
+controls needs none. Work comes BACK the same way (`tireless-handoff-pull`,
+git-over-ssh in reverse — see "Hand-back"), and GitHub pushes keep
+happening from the laptop.
 A gh recipe (device-flow login, workspace→GitHub pushes) is a known v2 item.
 One-shot escape hatch when the user insists on pushing from the workspace:
-`ssh -A <ws>.tireless 'cd <dir> && git push origin <branch>'` — confirm
+`ssh -A <alias> 'cd <dir> && git push origin <branch>'` — confirm
 first and disclose that `-A` briefly exposes the local ssh agent to the VM.
 
 What never travels in git mode: submodule contents, LFS blobs (warn; offer
@@ -152,20 +154,75 @@ Monitoring from the local side stays within the long-job idiom:
 `tireless-handoff-launch <ws> <dir> --status` (capped `capture-pane`), and
 the session survives the laptop disconnecting entirely.
 
+## Hand-back: how work returns, and how the laptop knows
+
+`tireless-handoff-pull` is the sync in reverse, with the safety burden
+flipped: sync may assume the workspace tree is disposable-ish (it parks
+remote changes in stashes); pull must assume the LOCAL tree is precious.
+Hence its three hard rules — fast-forward only (divergence is aborted, the
+fetched `refs/tireless/handback` ref is left for a deliberate merge), the
+remote uncommitted diff applies only when clean against the same base
+(otherwise it is saved to `~/.timeless/handoffs/back/<ws>-<ts>.patch` and
+reported), and untracked files never overwrite existing local paths
+(identical-content files are recognized by blob hash and stay quiet, so
+repeat pulls don't re-alarm; differing ones are listed in a skipped-file,
+never clobbered). Gitignored remote files never travel back implicitly —
+same posture as sync's confirm-gated `--include`.
+
+The "laptop knows" mechanism is a local record, not a network probe: every
+successful sync writes `~/.timeless/handoffs/out/<ws>--<rootid>.rec`
+(KEY=val; `rootid` = cksum of the repo toplevel) with `RESOLVED=no`. Three
+things read it: the plugin's SessionStart hook (`hooks/pending-handoff.sh`
+— local file reads only, prints a one-line reminder in that project until
+resolved), `tireless-handoff-state` (`PENDING_HANDOFFS`/`PENDING_WS`, which
+the continue skill checks before ever syncing over newer work), and
+`tireless-handoff-pull` itself (record supplies the default workspace,
+target dir, and branch — zero-argument pull). `RESOLVED` flips to yes when
+a pull (or a `tireless-handoff-check` probe) confirms parity: nothing on
+the workspace — commits, dirty tree, untracked, stashes — that local
+lacks. `--forget` deletes the record for abandoned or deleted workspaces.
+
+`tireless-handoff-check` (the pre-approvable read-only wrapper for
+`handoff-pull.sh --check`) fetches into the temp ref to get exact
+ahead/behind counts but never touches the working tree, and also reports
+whether the `tireless-continue` tmux session is still running — pull
+refuses mid-flight pulls by default (`session_running`) because a working
+agent's half-written tree is not a state worth copying; `--even-if-running`
+overrides for deliberate snapshots.
+
+Why not "auto-pull on session start": the hook stays offline-fast (<100 ms,
+no ssh) so sessions never hang on a dead workspace, and a mutating pull
+belongs behind the agent's permission prompt, not a hook. The hook nags,
+the agent probes, the user approves the pull — same trust ladder as the
+rest of the plugin.
+
 ## Failure modes at a glance
 
 | Symptom | Meaning | Move |
 |---|---|---|
-| `SYNC=abort REASON=remote_ahead` | workspace has commits local lacks | fetch back + merge, or confirm-gated `--force-overwrite` (backup branch is created) |
+| `SYNC=abort REASON=remote_ahead` | workspace has commits local lacks | `tireless-handoff-pull` them back first, or confirm-gated `--force-overwrite` (backup branch is created) |
+| `SYNC=abort REASON=remote_detached` | workspace repo on a detached HEAD (agent mid-rebase?) | resolve it on the workspace, or `--force-overwrite` (HEAD gets a backup branch) |
 | `SYNC=abort REASON=dir_not_repo` | target dir exists, not a repo | different `--target-dir`, or `--tar-mode` |
+| `SYNC=abort REASON=dir_exists` | tar-mode target exists non-empty (overlay would diverge silently) | fresh `--target-dir`, or `--force-overwrite` to accept the overlay |
 | `SYNC=abort REASON=not_a_repo/unborn_head` | no local git history | `--tar-mode` |
 | `SYNC=abort REASON=detached_head` | no branch to materialize | pass `--branch` |
 | `SYNC=fail` | ssh/git plumbing broke | fix skill; no blind retries |
 | `LAUNCH=blocked REASON=not_installed` | no agent CLI on the VM | dashboard recipe, then re-run launch |
 | `LAUNCH=blocked REASON=unauth` | agent CLI never signed in | one-time login in the web terminal, then re-run |
 | `LAUNCH=blocked REASON=no_target_dir` | launch ran before sync (or wrong dir) | run `tireless-handoff-sync` first, then re-run |
+| `LAUNCH=blocked REASON=no_brief` | no `latest.md` on the workspace (kickoff would dangle) | re-run the sync with `--brief` |
+| `LAUNCH=ok` but `PANE_LAST` shows a prompt/menu | agent parked at a first-run gate (trust prompt, login, theme) | user answers it once via attach or the web terminal |
+| `SYNC=ok` with `INCLUDE_BACKUP=<dir>` | remote copies of `--include` files differed and were saved | diff them on the workspace before assuming the laptop's env is right |
 | `LAUNCH=exists` | continuation already running | attach, or confirm-gated `--stop` + relaunch |
 | `LAUNCH=fail` + ssh-ish `DETAIL` | connection broke mid-launch | fix skill; no blind retries |
 | `LAUNCH=fail` "exits immediately" | expired login / broken install | user runs the agent attended in the web terminal; everything is already synced |
 | `SYNC=fail` "could not archive" | a file vanished/changed mid-archive (live dev server writing) | retry once; if persistent, stop the writer first |
 | huge repo, push times out | first push moves all objects | re-run with a raised Bash timeout; later pushes are delta-cheap |
+| `PULL=abort REASON=session_running` | workspace agent still working | `--status`/attach and wait, confirm-gated `--stop`, or `--even-if-running` snapshot |
+| `PULL=abort REASON=ff_blocked` | local dirty overlaps workspace commits (usually the same changes the agent committed) | `git stash` + re-pull; stash drop if redundant, else pop + hand-merge |
+| `PULL=abort REASON=diverged` | both sides committed | merge `refs/tireless/handback` deliberately, re-pull for the remainder |
+| `PULL=abort REASON=branch_mismatch` | local checkout on another branch | `git checkout <branch>` first |
+| `PULL=abort REASON=remote_not_repo` | tar-mode handoff (no git there) | copy what's needed over ssh, or remote `git init` + commit first |
+| `PULL=ok` with `DIRTY_SAVED=path` | remote diff conflicts with local edits | apply the saved patch by hand when ready |
+| `PULL=ok` with `UNTRACKED_SKIPPED>0` | remote untracked files differ from same-named local ones | diff against `SKIPPED_LIST`, decide per file |
+| record nags but workspace is gone | stale pending-handoff record | `tireless-handoff-pull --forget` |

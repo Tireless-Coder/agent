@@ -23,7 +23,7 @@ Ask the user: "Copy any screenshot to your clipboard (e.g. take one now) and
 tell me when done — I'll check it crosses the bridge." Then run:
 
 ```
-ssh -o BatchMode=yes -o ConnectTimeout=10 <ws>.tireless 'xclip -selection clipboard -t image/png -o | head -c 8'
+ssh -o BatchMode=yes -o ConnectTimeout=10 <alias> 'xclip -selection clipboard -t image/png -o | head -c 8'
 ```
 
 The first bytes must be the PNG magic (`\x89PNG`). For a clean yes/no, run

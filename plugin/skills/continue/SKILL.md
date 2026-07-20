@@ -1,7 +1,7 @@
 ---
 name: continue
 description: Continue the current local coding session on the user's Tireless cloud workspace. Use when the user says "continue this on my workspace/server", "hand this off to my cloud dev computer", "pick this up on the server", "move this work/session to my workspace", or wants the workspace agent to keep working after they step away. Syncs the branch + uncommitted changes + selected env files over ssh, writes a handoff brief with the session context, and starts Claude Code (or Codex) on the workspace in tmux — steerable from claude.ai.
-allowed-tools: Bash(tireless-handoff-state*), Bash(tireless-verify*), Bash(tireless-urls*), Bash(tireless list*), Bash(tireless ping*)
+allowed-tools: Bash(tireless-handoff-state*), Bash(tireless-handoff-check*), Bash(tireless-verify*), Bash(tireless-urls*), Bash(tireless list*), Bash(tireless ping*)
 ---
 
 # Continue this session on a Tireless workspace
@@ -23,6 +23,12 @@ Run `tireless-handoff-state` (Codex/Cursor:
 `sh ~/.agents/skills/tireless/scripts/handoff-state.sh`) from the project
 directory and branch on its KEY=val output:
 
+- `PENDING_HANDOFFS` > 0 → an EARLIER handoff to `PENDING_WS` was never
+  pulled back: the workspace may hold work this repo lacks. Before syncing
+  anything, run `tireless-handoff-check` and — if it reports the workspace
+  ahead — bring the work back first (see "Bringing the work back" below).
+  Syncing over it would trip the `remote_ahead` guard anyway; pulling first
+  is the clean path.
 - `REPO=ok` → keep `REPO_ROOT` for Step 5 (the sync must run from there).
 - `UNBORN=yes` → the sync will use `--tar-mode`; inside a work tree it still
   respects `.gitignore`. Tell the user (no history travels).
@@ -45,7 +51,8 @@ directory and branch on its KEY=val output:
 3. Suspended → `tireless_workspace_action` `{"action":"resume"}`, then
    `tireless_watch_state` until ready.
 4. `tireless-verify <ws>` — `VERIFY=fail` → switch to the fix skill; do not
-   hand off over a broken connection.
+   hand off over a broken connection. `VERIFY=ok` returns `ALIAS=` — the
+   handoff commands accept either the bare name or that alias.
 
 Default remote project dir is `/home/dev/<ws>/<REPO_NAME>` (with
 `REPO=none`: the basename of the current directory). On a first handoff,
@@ -100,10 +107,11 @@ line:
   `DIRTY_APPLIED`/`UNTRACKED_SENT`/`REMOTE_STASHED` keys, and remote files
   were overwritten in place.
 - `SYNC=abort REASON=remote_ahead` → the workspace has commits the local
-  branch lacks (an agent worked there since the last handoff). Offer the two
-  paths from `NEXT=`: fetch them back and merge locally (preferred), or
-  re-run with `--force-overwrite` — only after the user explicitly confirms
-  overwriting, and tell them the backup branch name afterwards.
+  branch lacks (an agent worked there since the last handoff). Preferred:
+  `tireless-handoff-pull` to bring them back first (see "Bringing the work
+  back"), then re-sync. Overwriting instead needs `--force-overwrite` — only
+  after the user explicitly confirms, and tell them the backup branch name
+  afterwards.
 - `SYNC=abort` (other reasons) → the `NEXT=` line says what to do.
 - `SYNC=fail` → treat like a broken connection: fix skill, no blind retries.
 
@@ -131,7 +139,7 @@ pass `--agent codex` when the workspace agent should be Codex.)
   terminal, runs `claude` (or `codex`), completes the login THERE (never
   paste tokens into this chat), says "done" → re-run the launch. Codex
   browser-redirect logins may need `ssh -L 1455:localhost:1455
-  <ws>.tireless` run by the user in their own terminal. Still blocked after
+  <alias>` run by the user in their own terminal. Still blocked after
   one retry → don't loop; hand the user the attended one-liner below.
 - `LAUNCH=blocked REASON=no_target_dir` → sync didn't run (or wrong dir):
   back to Step 5.
@@ -154,20 +162,64 @@ tell them to drive it attended via the web terminal instead.
 Tell the user, concretely: what synced (branch, sha, dirty/untracked counts,
 env files by name), where (`target-dir`), that the brief is at
 `~/.timeless/handoffs/latest.md`, how the session is running and how to
-watch/steer it, and how to bring work back later:
+watch/steer it, and that the work comes back with one command later:
+`tireless-handoff-pull` (see below). The sync recorded a pending-handoff
+marker on this machine — future local sessions in this project are reminded
+automatically until the work is pulled back (or the record is `--forget`ed).
 
-```sh
-git fetch ssh://<ws>.tireless/home/dev/<ws>/<repo> <branch>
-```
+After a `MODE=tar` sync there is no git bring-back: the workspace copy is
+now the canonical one — say so, and suggest the remote agent `git init`
+there if history matters going forward. GitHub pushes still happen from the
+laptop; the workspace has no GitHub credentials.
 
-(work returns to the laptop with a plain fetch — pushing to GitHub still
-happens from the laptop; the workspace has no GitHub credentials). After a
-`MODE=tar` sync there is no git bring-back: the workspace copy is now the
-canonical one — say so, and suggest the remote agent `git init` there if
-history matters going forward.
+## Bringing the work back (any later session)
+
+Two commands, both from inside the project:
+
+- `tireless-handoff-check` (read-only, pre-approved) — is the workspace
+  ahead? Branch on `PULL_NEEDED` and `RELATION`; `SESSION=running` means the
+  workspace agent is still going (watch it via
+  `tireless-handoff-launch <ws> <dir> --status`, don't pull mid-flight).
+- `tireless-handoff-pull` (prompt-gated, mutating) — fetches the branch and
+  fast-forwards local, applies the workspace's uncommitted diff (or saves it
+  to `~/.timeless/handoffs/back/` when local edits overlap — never guesses),
+  copies back new untracked files (never overwriting local paths; identical
+  files stay quiet), and reports parked stashes. Defaults (workspace,
+  target-dir, branch) come from the pending-handoff record, so no arguments
+  are usually needed.
+
+Branch on the FIRST output line:
+
+- `PULL=ok` → report what landed (`PULLED_COMMITS`, `DIRTY_APPLIED` /
+  `DIRTY_ALREADY` / `DIRTY_SAVED`, `UNTRACKED_IN`/`UNTRACKED_SKIPPED`,
+  `REMOTE_STASHES`). `RESOLVED=yes` means the session-start reminder stops;
+  `RESOLVED=no` names what still lives only on the workspace.
+- `PULL=none` → nothing to bring back (or local is ahead — then it's a sync,
+  not a pull).
+- `PULL=abort REASON=session_running` → offer --status/attach, or (user
+  confirms) `--stop` the session, or `--even-if-running` for a mid-flight
+  snapshot.
+- `PULL=abort REASON=ff_blocked` → local uncommitted changes overlap the
+  workspace commits. The COMMON cause: the local dirty state that was synced
+  over is exactly what the workspace agent committed. Verify with `git
+  stash && tireless-handoff-pull` — if the pull lands those same changes as
+  commits, `git stash drop` the now-redundant stash (confirm with the user);
+  anything else: `git stash pop` and merge by hand.
+- `PULL=abort REASON=diverged` → both sides committed. The workspace commits
+  are already fetched to `refs/tireless/handback`; merge deliberately with
+  the user, then re-run for the uncommitted remainder.
+- `PULL=abort` (other) / `PULL=fail` → the `NEXT=`/`DETAIL=` line says what
+  to do; ssh breakage → fix skill.
+- Workspace gone for good (deleted)? `tireless-handoff-pull --forget` clears
+  the stale record and stops the reminders.
+
+After a clean pull, offer to tidy the workspace tree (drop the redundant
+`tireless-continue` stashes, `git checkout -- .` the already-pulled diff) so
+the next check reads clean — do it only with the user's go-ahead.
 
 ## If the user only wants to keep driving from here
 
 No launch needed: sync (Steps 1–5) still pays off — the brief plus synced
 tree mean any future session, local or remote, can pick the work up. Then
-keep working over `ssh <ws>.tireless` per the workspace skill.
+keep working over `ssh <alias>` (the verify step's ALIAS) per the
+workspace skill.

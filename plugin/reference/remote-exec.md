@@ -1,16 +1,22 @@
 # Remote exec on a Tireless workspace — idioms
 
 Remote work goes through the agent's native Bash tool with plain ssh against
-the `<workspace>.tireless` alias. There is no MCP exec tool by design: your
+the workspace's ssh alias. There is no MCP exec tool by design: your
 client's permission system (allow/deny/ask) governs every remote command
 instead of a blanket-approved tool.
 
 ## The alias
 
-`tireless config-ssh --yes` writes a managed block so `ssh <ws>.tireless`
-works from any tool. It uses a ProxyCommand (no host-key prompts — nothing
-ever blocks a non-interactive Bash call on first contact). Use only the
-alias; never `ssh dev@<ip>` with relaxed host-key checking.
+The connection card's `ssh_alias` (also `ALIAS=` from `tireless-verify`) is
+the real name — regional, e.g. `myws.eu-central.tireless`. It is defined in
+a per-region fragment (`~/.config/tireless/ssh/*.config` or the
+tireless-connect equivalent) that a marker-wrapped Include in `~/.ssh/config`
+pulls in; `tireless-connect setup` (or the platform installer) writes both.
+It uses a ProxyCommand (no host-key prompts — nothing ever blocks a
+non-interactive Bash call on first contact). The bare `myws.tireless` form is
+legacy single-region only. Use only the alias; never `ssh dev@<ip>` with
+relaxed host-key checking. Examples below write `myws.tireless` for
+brevity — substitute your real alias.
 
 ## Fresh shell per call — always cd-prefix
 
@@ -60,17 +66,38 @@ ssh myws.tireless 'cd ~/project && npm test 2>&1 | tail -100'
 ssh myws.tireless 'cd ~/project && grep -n "ERROR" build.log | head -50'
 ```
 
-## Files
+## Files — reading and understanding remote code
 
-Prefer running tools remotely over copying files locally. When you must
-inspect a file: `ssh myws.tireless 'sed -n 1,120p ~/project/src/main.go'`.
-For edits, prefer git (push/pull) or remote editors over heredocs — quoting
-bugs in `ssh 'cat > file <<EOF'` waste turns.
+Your Read/Grep/Glob tools see only the LOCAL filesystem — everything on the
+workspace goes through ssh. Prefer running tools remotely over copying files
+locally:
+
+```sh
+# read a file (always sed/head-bounded, never bare cat on unknown sizes)
+ssh myws.tireless 'sed -n 1,120p ~/project/src/main.go'
+# search
+ssh myws.tireless 'cd ~/project && grep -rn "handleAuth" --include="*.go" . | head -30'
+# explore structure
+ssh myws.tireless 'cd ~/project && find . -type f -name "*.ts" -not -path "*/node_modules/*" | head -50'
+ssh myws.tireless 'cd ~/project && ls -la src/'
+```
+
+When you genuinely need files locally (diff against local code, feed to a
+local tool), pull them explicitly and put them in a scratch dir:
+
+```sh
+scp myws.tireless:project/src/main.go /tmp/ws-main.go          # one file
+ssh myws.tireless 'cd ~/project && tar -czf - src' | tar -xzf - -C /tmp/ws-src  # a subtree
+```
+
+For edits, prefer git (the handoff commands) or remote editors over
+heredocs — quoting bugs in `ssh 'cat > file <<EOF'` waste turns.
 
 Moving a whole working tree (branch + uncommitted changes + env files) onto
-the workspace is `tireless-handoff-sync` — one command, direct
-git-over-ssh, no GitHub credentials involved (see `handoff.md`). Bring work
-back with `git fetch ssh://myws.tireless/home/dev/myws/<repo> <branch>`.
+the workspace is `tireless-handoff-sync`; bringing the workspace's work back
+afterwards is `tireless-handoff-pull` (probe first with the read-only
+`tireless-handoff-check`) — one command each, direct git-over-ssh, no GitHub
+credentials involved (see `handoff.md`).
 
 ## Quoting
 

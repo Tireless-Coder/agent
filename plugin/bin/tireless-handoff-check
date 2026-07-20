@@ -1,0 +1,7 @@
+#!/bin/sh
+# Read-only probe: does the workspace hold work this repo lacks? Thin alias
+# for scripts/handoff-pull.sh --check so skills can pre-approve it while the
+# mutating pull stays prompt-gated.
+set -eu
+dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+exec sh "$dir/scripts/handoff-pull.sh" --check "$@"

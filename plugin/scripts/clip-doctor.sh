@@ -15,6 +15,8 @@
 # identical by design (TLCP REFUSED).
 set -eu
 
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/alias.sh"
+
 BIN_DIR="$HOME/.local/bin"
 SSH_CONFIG="$HOME/.ssh/config"
 CLIP_CONFIG_FILE="$HOME/.ssh/tireless_clip_config"
@@ -47,10 +49,17 @@ else
 fi
 
 if [ -n "$WS" ]; then
+  # Resolve the real alias first (full alias passes through; bare names try
+  # the regional suffixes) — the bare `$WS.tireless` form is legacy-only.
+  if ! ALIAS="$(tireless_resolve_alias "$WS")"; then
+    echo "REMOTE_SHIM=unreachable"
+    echo "REMOTE_PNG=unreachable"
+    exit 0
+  fi
   # On a wired workspace, xclip resolves to the timeless-clip-shim symlink.
   # The remote command always exits 0 so a missing xclip is distinguishable
   # from an unreachable workspace.
-  if shim="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$WS.tireless" 'p="$(command -v xclip || true)"; if [ -n "$p" ]; then readlink -f "$p"; else echo NO_XCLIP; fi' 2>/dev/null)"; then
+  if shim="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$ALIAS" 'p="$(command -v xclip || true)"; if [ -n "$p" ]; then readlink -f "$p"; else echo NO_XCLIP; fi' 2>/dev/null)"; then
     case "$shim" in
       *timeless-clip-shim*) echo "REMOTE_SHIM=ok" ;;
       *) echo "REMOTE_SHIM=missing" ;;
@@ -62,7 +71,7 @@ if [ -n "$WS" ]; then
   fi
   # Behavioral probe: first 8 bytes of the clipboard as PNG. 89504e47 is the
   # PNG magic; anything else reports "none".
-  if magic="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$WS.tireless" 'xclip -selection clipboard -t image/png -o 2>/dev/null | head -c 8 | od -An -tx1' 2>/dev/null)"; then
+  if magic="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$ALIAS" 'xclip -selection clipboard -t image/png -o 2>/dev/null | head -c 8 | od -An -tx1' 2>/dev/null)"; then
     case "$(printf '%s' "$magic" | tr -d ' \n')" in
       89504e47*) echo "REMOTE_PNG=ok" ;;
       *) echo "REMOTE_PNG=none" ;;

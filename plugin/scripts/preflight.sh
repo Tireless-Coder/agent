@@ -5,8 +5,15 @@
 # can branch on string equality instead of parsing shell noise:
 #
 #   CLI=ok|missing         tireless CLI (rebranded Coder CLI) found
-#   AUTH=ok|missing        `tireless list` exits 0 (Coder session valid)
-#   SSHCFG=ok|missing      *.tireless host block present in ~/.ssh/config
+#   AUTH=ok|missing        a REGIONAL Coder session answers `list` (the only
+#                          sessions the ssh configs actually use; the legacy
+#                          default-dir probe is the last resort)
+#   SSHCFG=ok|missing      a managed Include block (installer TIRELESS-CELLS
+#                          or tireless-connect markers) is in ~/.ssh/config
+#                          AND at least one regional fragment file exists
+#   SSHCFG_STALE=yes|no    a stock Coder-branded block (Host coder.* etc.)
+#                          lingers in ~/.ssh/config from an old setup — it
+#                          resolves nothing current; offer to clean it up
 #   CLIP=ok|stale|missing  tireless-clip binary + managed ssh include wired
 #   CONNECT=ok|missing     tireless-connect (MCP server binary) found
 #   PATHOK=yes|no          ~/.local/bin is on PATH
@@ -14,6 +21,8 @@
 #
 # Read-only: probes never mutate state, so this script is safe to pre-approve.
 set -eu
+
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/alias.sh"
 
 APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 BIN_DIR="$HOME/.local/bin"
@@ -30,24 +39,39 @@ elif [ -x "$BIN_DIR/tireless" ]; then
 fi
 if [ -n "$CLI_BIN" ]; then echo "CLI=ok"; else echo "CLI=missing"; fi
 
-# `tireless list` exiting 0 is the same already-signed-in probe the platform
-# installer uses; non-zero means no session (or CP unreachable — the fix
-# skill separates the two).
-if [ -n "$CLI_BIN" ] && "$CLI_BIN" list >/dev/null 2>&1; then
-  echo "AUTH=ok"
-else
-  echo "AUTH=missing"
+# Sessions live PER REGION under the state roots (installer:
+# ~/.config/tireless/coder/<region>; connector:
+# <UserConfigDir>/tireless-connect/coder/<region>) — a bare `tireless list`
+# reads the stock coderv2 dir, which no supported setup ever writes. Probe
+# every regional dir; fall back to the bare probe only for ancient installs.
+AUTH=missing
+if [ -n "$CLI_BIN" ]; then
+  while IFS= read -r d; do
+    [ "$AUTH" = ok ] && continue
+    if "$CLI_BIN" --global-config "$d" list >/dev/null 2>&1; then AUTH=ok; fi
+  done <<EOF
+$(tireless_coder_dirs)
+EOF
+  if [ "$AUTH" = missing ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
 fi
+echo "AUTH=$AUTH"
 
-# `tireless config-ssh --yes` writes a Coder-managed block whose Host pattern
-# ends in the .tireless suffix. The tireless-clip `Host *.tireless` line lives
-# in ~/.ssh/tireless_clip_config (a separate Include file), so it cannot
-# false-positive this grep. TODO(live-verify): exact managed-block markers on
-# Coder 2.24.2 — the Host pattern is the stable observable.
-if grep -qsE '^[[:space:]]*Host[[:space:]].*\.tireless([[:space:]]|$)' "$SSH_CONFIG"; then
-  echo "SSHCFG=ok"
+# Both supported setups write a marker-wrapped Include in ~/.ssh/config and
+# per-region fragments elsewhere — the Host lines are in the FRAGMENTS, so
+# never grep ~/.ssh/config for them. Legacy fallback: a Host *.tireless line
+# directly in ~/.ssh/config (pre-regional installs).
+SSHCFG=missing
+if [ -n "$(tireless_ssh_fragments)" ] \
+  && grep -qsE 'START-TIRELESS-CELLS|>>> tireless-connect managed regional SSH include >>>' "$SSH_CONFIG"; then
+  SSHCFG=ok
+elif grep -qsE '^[[:space:]]*Host[[:space:]].*\.tireless([[:space:]]|$)' "$SSH_CONFIG"; then
+  SSHCFG=ok
+fi
+echo "SSHCFG=$SSHCFG"
+if grep -qsE '^[[:space:]]*Host[[:space:]]+(coder\.\*|\*\.coder)([[:space:]]|$)' "$SSH_CONFIG"; then
+  echo "SSHCFG_STALE=yes"
 else
-  echo "SSHCFG=missing"
+  echo "SSHCFG_STALE=no"
 fi
 
 CLIP_BIN=""

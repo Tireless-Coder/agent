@@ -29,16 +29,18 @@
 # CLI->web visibility mechanism at 0.144.x; its steering path is tmux attach.
 set -eu
 
-SSH_OPTS="-o BatchMode=yes -o ConnectTimeout=10"
-KICKOFF='Read ~/.timeless/handoffs/latest.md. It is a handoff brief from another agent session. Verify the project state it describes, then continue the work. Do not retry anything listed under Dead ends.'
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/alias.sh"
+
+KICKOFF='Read ~/.timeless/handoffs/latest.md. It is a handoff brief from another agent session. Verify the project state it describes, then continue the work. Do not retry anything listed under Dead ends. Keep a short running summary in ~/.timeless/handoffs/return.md (overwrite freely): done, in flight, decisions, how to test — it rides back in the next pull.'
 
 usage() {
   echo "usage: handoff-launch.sh <workspace> <target-dir> [--agent claude|codex] [--session NAME] [--status|--stop]" >&2
   exit 2
 }
 
+FAIL_WORD=LAUNCH
 fail() {
-  echo "LAUNCH=fail"
+  echo "$FAIL_WORD=fail"
   echo "DETAIL=$1"
   exit 1
 }
@@ -59,32 +61,36 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-case "$WS" in ''|-*|*[!a-zA-Z0-9-]*) fail "workspace name has unsupported characters" ;; esac
+case "$WS" in ''|-*|*[!a-zA-Z0-9.-]*) fail "workspace name has unsupported characters" ;; esac
 case "$TARGET_DIR" in /*) ;; *) fail "target dir must be absolute" ;; esac
 case "$TARGET_DIR" in *[!a-zA-Z0-9/._-]*) fail "target dir has unsupported characters" ;; esac
 case "$SESSION" in ''|*[!a-zA-Z0-9_-]*) fail "session name has unsupported characters" ;; esac
 case "$AGENT" in claude|codex) ;; *) fail "unsupported agent '$AGENT' (claude|codex)" ;; esac
+[ "$MODE" = status ] && FAIL_WORD=STATUS
 
 rsh() {
-  # shellcheck disable=SC2086
-  ssh $SSH_OPTS "$WS.tireless" "$@"
+  # Literal option words, not a split $SSH_OPTS — immune to IFS changes.
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" "$@"
 }
 
 # Every mode needs a reachable workspace; without this gate an ssh-level
-# failure (exit 255) is indistinguishable from "no tmux session".
-rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK \
-  || fail "workspace unreachable over ssh — run the fix skill"
+# failure (exit 255) is indistinguishable from "no tmux session". Resolving
+# the alias (regional suffixes; legacy .tireless last) IS that gate.
+HOST="$(tireless_resolve_alias "$WS")" \
+  || fail "workspace unreachable over ssh (no alias for '$WS' answers) — run the fix skill"
 
 # Probe that separates "session alive/gone" from "ssh broke mid-flight".
+# `=` pins the exact tmux session name — bare -t prefix-matches, which could
+# hit an unrelated session that merely starts with the same string.
 session_state() {
-  rsh "sleep ${1:-0}; tmux has-session -t '$SESSION' 2>/dev/null && echo ALIVE || echo GONE" 2>/dev/null || true
+  rsh "sleep ${1:-0}; tmux has-session -t '=$SESSION' 2>/dev/null && echo ALIVE || echo GONE" 2>/dev/null || true
 }
 
 if [ "$MODE" = status ]; then
   case "$(session_state 0)" in
     ALIVE)
       echo "STATUS=running"
-      rsh "tmux capture-pane -pt '$SESSION' -S -100 | tail -50" || true
+      rsh "tmux capture-pane -pt '=$SESSION' -S -100 | tail -50" || true
       ;;
     GONE) echo "STATUS=ended" ;;
     *) fail "workspace unreachable over ssh — run the fix skill" ;;
@@ -93,7 +99,7 @@ if [ "$MODE" = status ]; then
 fi
 
 if [ "$MODE" = stop ]; then
-  if rsh "tmux kill-session -t '$SESSION' 2>/dev/null"; then
+  if rsh "tmux kill-session -t '=$SESSION' 2>/dev/null"; then
     echo "STOPPED=yes"
   else
     echo "STOPPED=no"
@@ -102,7 +108,19 @@ if [ "$MODE" = stop ]; then
 fi
 
 # ---- prechecks ---------------------------------------------------------------
-rsh "test -d '$TARGET_DIR'" || { echo "LAUNCH=blocked"; echo "REASON=no_target_dir"; echo "HINT=run tireless-handoff-sync first"; exit 1; }
+# Sentinel probes: YES/NO answers, anything else = ssh broke mid-precheck —
+# never misreport an ssh failure as the probed condition.
+probe_yn() {
+  out="$(rsh "$1 && echo YES || echo NO" 2>/dev/null)" || true
+  case "$out" in
+    YES|NO) printf '%s\n' "$out" ;;
+    *) fail "lost ssh during prechecks — run the fix skill" ;;
+  esac
+}
+[ "$(probe_yn "test -d '$TARGET_DIR'")" = YES ] \
+  || { echo "LAUNCH=blocked"; echo "REASON=no_target_dir"; echo "HINT=run tireless-handoff-sync first"; exit 1; }
+[ "$(probe_yn 'test -e "$HOME/.timeless/handoffs/latest.md"')" = YES ] \
+  || { echo "LAUNCH=blocked"; echo "REASON=no_brief"; echo "HINT=no handoff brief on the workspace — re-run tireless-handoff-sync with --brief (the kickoff points the agent at latest.md)"; exit 1; }
 
 case "$AGENT" in
   claude)
@@ -115,26 +133,28 @@ case "$AGENT" in
     ;;
 esac
 
-if ! rsh "test -x \"$BIN\""; then
+if [ "$(probe_yn "test -x \"$BIN\"")" != YES ]; then
   echo "LAUNCH=blocked"
   echo "REASON=not_installed"
   echo "HINT=install the $AGENT recipe from the dashboard (workspace page > Recipes), then re-run"
   exit 1
 fi
 
-# Auth probe. claude: `auth status --json` when available, credentials file as
-# the weaker fallback (existence != validity). codex: auth.json only.
+# Auth probe. claude: `auth status --json` is authoritative when it answers
+# (an explicit loggedIn:false must NOT be overridden by a stale credentials
+# file); the file's existence is only the fallback when the subcommand is
+# unavailable. codex: auth.json only.
 # TODO(live-verify): `claude auth status --json` output shape on 2.1.197.
 AUTH=missing
 if [ "$AGENT" = claude ]; then
   out="$(rsh "\"\$HOME/.local/bin/claude\" auth status --json 2>/dev/null" || true)"
-  if printf '%s' "$out" | grep -q '"loggedIn":[[:space:]]*true'; then
-    AUTH=ok
-  elif rsh 'test -s "$HOME/.claude/.credentials.json"'; then
+  if printf '%s' "$out" | grep -q '"loggedIn"'; then
+    printf '%s' "$out" | grep -q '"loggedIn":[[:space:]]*true' && AUTH=ok
+  elif [ "$(probe_yn 'test -s "$HOME/.claude/.credentials.json"')" = YES ]; then
     AUTH=ok
   fi
 else
-  if rsh 'test -s "$HOME/.codex/auth.json"'; then AUTH=ok; fi
+  if [ "$(probe_yn 'test -s "$HOME/.codex/auth.json"')" = YES ]; then AUTH=ok; fi
 fi
 if [ "$AUTH" != ok ]; then
   echo "LAUNCH=blocked"
@@ -146,7 +166,7 @@ fi
 if [ "$(session_state 0)" = ALIVE ]; then
   echo "LAUNCH=exists"
   echo "SESSION=$SESSION"
-  echo "ATTACH_SSH=ssh -t $WS.tireless tmux attach -t $SESSION"
+  echo "ATTACH_SSH=ssh -t $HOST tmux attach -t =$SESSION"
   echo "HINT=attach to it, or re-run with --stop first to replace it"
   exit 0
 fi
@@ -199,4 +219,9 @@ echo "LAUNCH=ok"
 echo "AGENT=$AGENT"
 echo "SESSION=$SESSION"
 echo "REMOTE_CONTROL=$REMOTE_CONTROL"
-echo "ATTACH_SSH=ssh -t $WS.tireless tmux attach -t $SESSION"
+echo "ATTACH_SSH=ssh -t $HOST tmux attach -t =$SESSION"
+# Last non-empty pane line: lets the caller notice a first-run interactive
+# gate (trust prompt, theme picker, login) that a 3s aliveness check cannot —
+# the session is ALIVE either way. Report it; judge it against the skill.
+pane_last="$(rsh "tmux capture-pane -pt '=$SESSION' | grep -v '^[[:space:]]*$' | tail -1" 2>/dev/null || true)"
+echo "PANE_LAST=${pane_last:-none}"

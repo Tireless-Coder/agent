@@ -14,9 +14,13 @@ every remote command. Full idiom reference (Claude Code:
 
 ## Remote-exec idioms (always)
 
-- **Fresh shell every call.** `ssh <ws>.tireless 'cmd'` starts a new login
+- **Use the real alias.** Take `ssh_alias` from the connection card (or
+  `ALIAS=` from `tireless-verify`) — it looks like `myws.eu-central.tireless`.
+  The bare `myws.tireless` form only resolves on legacy single-region
+  installs. `<alias>` below means that string.
+- **Fresh shell every call.** `ssh <alias> 'cmd'` starts a new login
   shell in `$HOME` each time — nothing persists. ALWAYS cd-prefix:
-  `ssh <ws>.tireless 'cd <dir> && <cmd>'`.
+  `ssh <alias> 'cd <dir> && <cmd>'`.
 - **Probes**: add `-o BatchMode=yes -o ConnectTimeout=10` so a broken
   connection errors fast instead of hanging your Bash tool.
 - **Long jobs (>2 min)**: run detached and poll —
@@ -28,7 +32,8 @@ every remote command. Full idiom reference (Claude Code:
   host-key checking, and never wrap remote exec in an MCP tool.
 - Moving the CURRENT local work + session context onto the workspace (code,
   uncommitted changes, env files, handoff brief, autonomous continuation) is
-  the continue skill — don't hand-roll it here.
+  the continue skill — don't hand-roll it here. So is bringing handed-off
+  work BACK to the laptop (`tireless-handoff-check` / `tireless-handoff-pull`).
 
 ## Open editors and URLs
 
@@ -67,11 +72,23 @@ chrome, terminal, vscode, cursor, clipboard).
   configured native SSH alias. Tell the user to review it and press Enter. This
   is intentionally not a fake remote `cwd` deep link. If the URL handler does
   not open, use the tool's returned prompt with a manually started `claude`.
-- VS Code: `vscode://vscode-remote/ssh-remote+<ws>.tireless/home/dev/<ws>`
-- Cursor: `cursor://vscode-remote/ssh-remote+<ws>.tireless/home/dev/<ws>`
+- VS Code: `vscode://vscode-remote/ssh-remote+<alias>/home/dev/<ws>`
+- Cursor: `cursor://vscode-remote/ssh-remote+<alias>/home/dev/<ws>`
+- **Open the PROJECT, not just the workspace folder**: append the repo dir
+  to the deep link when you know it — after a handoff that is
+  `/home/dev/<ws>/<repo>` (the pending-handoff record's `TARGET_DIR`):
+  `vscode://vscode-remote/ssh-remote+<alias>/home/dev/<ws>/<repo>`. The
+  `tireless_open_editor` tool currently opens `/home/dev/<ws>`; build the
+  deeper URL yourself when the user wants a specific project.
+- JetBrains (no URL scheme for this): tell the user to open JetBrains
+  Gateway → SSH connection → host `<alias>`, user `dev`, then pick
+  `/home/dev/<ws>/<repo>` as the project. The ssh alias works there because
+  it lives in `~/.ssh/config` via the managed Include.
 - Web terminal / desktop: use the links from the tools above.
 - Open deeplinks for the user with `open <url>` (macOS) / `xdg-open <url>`
-  (Linux), or the `tireless_open_editor` MCP tool.
+  (Linux), or the `tireless_open_editor` MCP tool. `open` exits non-zero
+  when no app claims the scheme (editor not installed) — then give the user
+  the URL and say which app to install.
 
 ## Preview ports
 

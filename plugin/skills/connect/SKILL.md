@@ -92,22 +92,27 @@ and would hang your Bash tool. Auth happens in Step 2 instead.
   opens that region's Coder sign-in automatically — no button to click, just
   paste the token it shows into that terminal, never here. Say 'done' when it
   finishes."
-- If `CONNECT=missing`: tell the user to run `tireless login <cpUrl>` in
-  their own terminal instead, then say "done". To find `<cpUrl>` read the CP
-  case from the served installer (read-only):
-  `curl -fsSL https://app.tirelesscode.com/install.sh | grep "CP_URL="` — or the
-  user can copy the command from their dashboard SSH page.
+- If `CONNECT=missing`: install it first
+  (`curl -fsSL https://app.tirelesscode.com/connect/install.sh | sh`), then the
+  `tireless-connect login` flow above. (A raw `tireless login <cpUrl>` is NOT
+  a substitute — it writes a default-dir session that no regional ssh config
+  reads.)
 - After "done": re-run the preflight. `AUTH=ok` means proceed; still
   `missing` means switch to the fix skill.
 
 ## Step 3 — SSH config (when SSHCFG=missing)
 
 ```
-tireless config-ssh --yes
+tireless-connect setup
 ```
 
-Writes the managed `*.tireless` host block (ProxyCommand — no host-key
-prompts, safe for non-interactive use).
+Writes the marker-wrapped Include in `~/.ssh/config` plus per-region
+fragment files (`Host *.<region>.tireless` with a ProxyCommand — no host-key
+prompts, safe for non-interactive use). Never run bare
+`tireless config-ssh --yes`: it targets the stock coderv2 config dir and
+writes a block no supported flow reads. `SSHCFG_STALE=yes` in the preflight
+means an old Coder-branded block lingers — offer to remove it (show the
+lines first).
 
 ## Step 4 — clipboard bridge (when CLIP=stale|missing)
 
@@ -131,9 +136,13 @@ prompts, safe for non-interactive use).
 
 ## Step 6 — verify
 
-Run `tireless-verify <workspace>` (or the Codex/Cursor script path).
+Run `tireless-verify <workspace>` (or the Codex/Cursor script path). Prefer
+passing the `ssh_alias` from the connection card when you have one; a bare
+name gets resolved against the regional suffixes automatically.
 
-- `VERIFY=ok` + `HOST=…`: connected.
+- `VERIFY=ok` + `ALIAS=…` + `HOST=…`: connected. Use that `ALIAS` (e.g.
+  `myws.eu-central.tireless`) in every later ssh command — the bare
+  `<ws>.tireless` form only exists on legacy single-region installs.
 - `VERIFY=fail`: read `SSH_EXIT` and `DETAIL`, then switch to the fix skill's
   decision tree. Do not retry blindly.
 
@@ -148,13 +157,16 @@ append:
 
 ```
 ## Tireless workspace
-Remote workspace `<workspace>`: run commands as
-`ssh <workspace>.tireless 'cd <dir> && <cmd>'` — every ssh call is a fresh
-shell, so always cd-prefix. Probes: `-o BatchMode=yes -o ConnectTimeout=10`.
-Jobs >2 min: `tmux new -d`. Cap output with `| tail -100`.
+Remote workspace `<workspace>` (ssh alias `<ALIAS from tireless-verify>`):
+run commands as `ssh <alias> 'cd <dir> && <cmd>'` — every ssh call is a
+fresh shell, so always cd-prefix. Probes: `-o BatchMode=yes -o
+ConnectTimeout=10`. Jobs >2 min: `tmux new -d`. Cap output with `| tail -100`.
 Never `tireless start|stop|delete|create`; lifecycle only via the Tireless
 dashboard or tireless_* MCP tools.
 ```
+
+(Substitute the real alias — e.g. `myws.eu-central.tireless` — before
+appending; never write the placeholder literally.)
 
 ## Step 8 — report
 

@@ -49,7 +49,8 @@ layer deeper only where it points:
 | `E_TOKEN_INVALID` | platform bearer token rejected | User runs `tireless-connect login` in their OWN terminal, replies "done"; re-run doctor. |
 | `E_TOKEN_EXPIRED` | token expired and refresh failed | Same fix as E_TOKEN_INVALID. |
 | `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | User runs `tireless-connect login` in their OWN terminal — it opens the region's Coder sign-in automatically (no button to click); they paste the token it shows THERE, never in chat, reply "done"; re-run doctor. (Raw-CLI fallback: `tireless login <cpUrl>`.) |
-| `E_SSH_BLOCK` | managed ssh block missing | `tireless config-ssh --yes` |
+| `E_SSH_BLOCK` | managed ssh block missing | `tireless-connect setup` (writes the marker-wrapped Include + regional fragments — the worlds preflight actually checks). Never bare `tireless config-ssh --yes`: it targets the stock coderv2 world and writes a block nothing uses. |
+| `SSHCFG_STALE=yes` (preflight) | leftover Coder-branded block (`Host coder.*`) from an old setup | Harmless but dead weight; offer to delete that block from ~/.ssh/config (show the user the exact lines first). |
 | `E_CLIP_INCLUDE` | clip include markers missing from ~/.ssh/config | `tireless-clip setup` |
 | `E_CLIP_DEAD` | local clipboard daemon not answering | `tireless-clip ensure-daemon`, then reconnect the ssh session (the daemon rides an ssh RemoteForward). |
 | `E_WS_SUSPENDED` | workspace suspended | MCP: `tireless_workspace_action` `{"action":"resume"}` then `tireless_watch_state` until ready. No MCP: dashboard. Never `tireless start`. |

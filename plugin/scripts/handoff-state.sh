@@ -101,3 +101,21 @@ for f in $(git ls-files --others --ignored --exclude-standard --directory 2>/dev
 done
 IFS=$OLDIFS
 echo "ENV_CANDIDATES=${CANDIDATES:-none}"
+
+# Pending handoffs: records handoff-sync wrote for THIS repo that no pull has
+# resolved yet — the workspace may hold work local lacks. Surface them so the
+# agent runs `tireless-handoff-check` before local edits (see continue skill).
+#   PENDING_HANDOFFS=<n>       unresolved records for this repo
+#   PENDING_WS=<ws1[:ws2...]>|none  workspaces those records point at
+PENDING=0
+PENDING_WS=""
+ROOT_ID="$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
+for rec in "$HOME/.timeless/handoffs/out/"*"--$ROOT_ID.rec"; do
+  [ -f "$rec" ] || continue
+  [ "$(sed -n 's/^RESOLVED=//p' "$rec" | head -1)" = yes ] && continue
+  PENDING=$((PENDING + 1))
+  ws="$(sed -n 's/^WS=//p' "$rec" | head -1)"
+  PENDING_WS="${PENDING_WS:+$PENDING_WS:}$ws"
+done
+echo "PENDING_HANDOFFS=$PENDING"
+echo "PENDING_WS=${PENDING_WS:-none}"
