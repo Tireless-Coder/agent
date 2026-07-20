@@ -22,7 +22,7 @@ set -eu
 APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 # Immutable reviewed release snapshot. Bump deliberately when publishing a
 # connector release; never execute a mutable branch during onboarding.
-RELEASE_COMMIT="${TIRELESS_AGENT_RELEASE_COMMIT:-d3c07bbeefdca30d25f5e1dbae7a73790e1dd358}"
+RELEASE_COMMIT="${TIRELESS_AGENT_RELEASE_COMMIT:-f3403a80175879fa6eaa162854aee3bba3d35c71}"
 TAR_URL="${TIRELESS_AGENT_TAR_URL:-https://codeload.github.com/Tireless-Coder/agent/tar.gz/$RELEASE_COMMIT}"
 SKILLS_DEST="$HOME/.agents/skills/tireless"
 BIN_DIR="$HOME/.local/bin"
