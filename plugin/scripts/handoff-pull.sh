@@ -121,6 +121,12 @@ if [ -n "$REC_FILE" ]; then
   # A recorded full alias beats a bare name — it skips suffix probing and
   # matches exactly what the sync used.
   REC_ALIAS="$(rec_get "$REC_FILE" ALIAS)"
+  # The record is a plain local file — re-validate before its values reach
+  # ssh argv (empty is fine: the resolver below takes over then).
+  case "$REC_ALIAS" in
+    '') ;;
+    -*|*[!a-zA-Z0-9.-]*) fail "pending-handoff record has a malformed ALIAS — inspect $REC_FILE (or delete it: tireless-handoff-pull --forget)" ;;
+  esac
   if [ -z "$WS" ]; then WS="${REC_ALIAS:-$(rec_get "$REC_FILE" WS)}"; fi
   [ -n "$TARGET_DIR" ] || TARGET_DIR="$(rec_get "$REC_FILE" TARGET_DIR)"
   [ -n "$BRANCH" ] || BRANCH="$(rec_get "$REC_FILE" BRANCH)"
@@ -349,11 +355,13 @@ if [ -s "$TMP_DIR/rlist.txt" ]; then
     # listed paths — each must be relative, carry no '..' component, and
     # resolve (symlinks included) inside the scratch dir. A tampered remote
     # tar (absolute paths, dot-dot segments, symlink-chained entries) then
-    # cannot write outside the repo.
+    # cannot write outside the repo — and neither can a planted local symlink
+    # (the destination walk below), which a previous pull could have carried.
     mkdir "$TMP_DIR/x"
     tar -xzf "$TMP_DIR/untracked.tgz" -C "$TMP_DIR/x" \
       || fail "could not extract the workspace's untracked files locally"
     xphys="$(CDPATH='' cd -P "$TMP_DIR/x" && pwd -P)"
+    rootphys="$(CDPATH='' cd -P "$ROOT" && pwd -P)"
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       case "$f" in
@@ -368,9 +376,39 @@ if [ -s "$TMP_DIR/rlist.txt" ]; then
         "$xphys"|"$xphys/"*) ;;
         *) fail "workspace archive escapes its tree through a symlink: $f" ;;
       esac
-      mkdir -p "$(dirname "$ROOT/$f")" \
+      # The DESTINATION needs the same scrutiny as the source: mkdir -p and
+      # cp both follow symlinks, so a symlinked ancestor (or a dangling
+      # symlink at the target path — both plantable by an earlier pull)
+      # would silently write OUTSIDE the repo. Refuse a symlink at the
+      # target, walk every existing path component before creating anything,
+      # then re-verify the created directory physically against the repo root.
+      dest="$ROOT/$f"
+      [ ! -L "$dest" ] \
+        || fail "local path is a symlink, refusing to write through it: $f"
+      case "$f" in
+        */*)
+          walk="$ROOT"
+          OLDIFS=$IFS; IFS='/'
+          for part in ${f%/*}; do
+            [ -n "$part" ] || continue
+            walk="$walk/$part"
+            if [ -L "$walk" ]; then
+              IFS=$OLDIFS
+              fail "local path '$walk' is a symlink, refusing to write through it: $f"
+            fi
+          done
+          IFS=$OLDIFS
+          ;;
+      esac
+      mkdir -p "$(dirname "$dest")" \
         || fail "could not create the directory for an untracked file: $f"
-      cp -RPp "$src" "$ROOT/$f" \
+      dphys="$(CDPATH='' cd -P "$(dirname "$dest")" 2>/dev/null && pwd -P)" \
+        || fail "could not resolve the destination directory for: $f"
+      case "$dphys" in
+        "$rootphys"|"$rootphys/"*) ;;
+        *) fail "destination escapes the repo through a symlinked directory: $f" ;;
+      esac
+      cp -RPp "$src" "$dest" \
         || fail "could not restore an untracked file: $f"
     done <"$TMP_DIR/include.txt"
   fi

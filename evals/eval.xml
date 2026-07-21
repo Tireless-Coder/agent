@@ -41,7 +41,7 @@
   </qa_pair>
   <qa_pair>
     <question>Doctor reports that the managed SSH host block for the workspace alias is missing from the user's ssh config. What exact single command fixes it?</question>
-    <answer>tireless config-ssh --yes</answer>
+    <answer>tireless-connect setup</answer>
   </qa_pair>
   <qa_pair>
     <question>The user finds a marketplace listing they like via tireless_marketplace_browse and asks you to rent it for them right here in chat. Inspect the full tool list — does the tireless MCP server expose any tool that can rent or purchase a marketplace listing? Answer yes or no.</question>

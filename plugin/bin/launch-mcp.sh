@@ -8,7 +8,9 @@
 # Resolution order: tireless-connect on PATH, then the plugin's persistent
 # data dir. If the binary is missing — or older than the platform's published
 # minimum (GET /api/agent/version) — download the current build from the
-# stable public URL, verify it against the published SHA256SUMS, and
+# stable public URL, verify the SHA256SUMS manifest against the ECDSA release
+# signature (public key pinned in this plugin, a trust root independent of the
+# download origin), check the binary against the signed manifest, and
 # atomically install it into ${CLAUDE_PLUGIN_DATA}/bin, so the plugin stays
 # genuinely "one thing" to install.
 set -eu
@@ -21,6 +23,10 @@ APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/tireless}"
 BIN_DIR="$DATA_DIR/bin"
 MANAGED_BIN="$BIN_DIR/tireless-connect"
+# Release public key, shipped with the plugin (installed from the reviewed
+# GitHub repo) — NOT fetched from the download origin, so a compromised
+# origin/bucket alone cannot push a binary that verifies.
+PUBKEY="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/share/release-pub.pem"
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;
@@ -98,21 +104,34 @@ if [ "$NEED_DOWNLOAD" = 1 ]; then
   log "downloading tireless-connect ($os/$arch) from $url"
   mkdir -p "$BIN_DIR"
   tmp="$BIN_DIR/.tireless-connect.$$"
+  sums="$BIN_DIR/.tireless-sums.$$"
+  sig="$BIN_DIR/.tireless-sums.sig.$$"
   ok=0
-  if curl -fsSL "$url" -o "$tmp"; then
-    # Integrity gate: SHA256SUMS is published next to the binaries and served
-    # via the same stable redirect, so a corrupted or tampered bucket object
-    # can never be exec'd. Fail closed — an unverified download never runs.
-    expected="$(curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" 2>/dev/null \
-      | awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' || true)"
-    if [ -z "$expected" ]; then
-      log "checksum manifest unavailable — refusing the downloaded binary"
-    elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
-      log "checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary"
+  if curl -fsSL "$url" -o "$tmp" \
+    && curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" -o "$sums" \
+    && curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS.sig" -o "$sig"; then
+    # Authenticity gate: the checksum manifest must carry a valid ECDSA
+    # signature from the pinned release key (above), then the binary hash is
+    # checked against the signed manifest. Fail closed — an unverifiable
+    # download never runs.
+    if [ ! -f "$PUBKEY" ]; then
+      log "release public key missing ($PUBKEY) — refusing the downloaded binary"
+    elif ! command -v openssl >/dev/null 2>&1; then
+      log "openssl unavailable — cannot verify the release signature, refusing the download"
+    elif ! openssl dgst -sha256 -verify "$PUBKEY" -signature "$sig" "$sums" >/dev/null 2>&1; then
+      log "manifest signature invalid — refusing the downloaded binary"
     else
-      ok=1
+      expected="$(awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' "$sums")"
+      if [ -z "$expected" ]; then
+        log "no manifest entry for tireless-connect-$os-$arch — refusing the downloaded binary"
+      elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
+        log "checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary"
+      else
+        ok=1
+      fi
     fi
   fi
+  rm -f "$sums" "$sig"
   if [ "$ok" = 1 ]; then
     chmod 0755 "$tmp"
     # Same-directory rename: atomic swap, never a half-written binary.

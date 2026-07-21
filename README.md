@@ -36,7 +36,7 @@ Then say: *"connect to my workspace"*.
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
 | `plugin/skills/continue` | "Continue this on my workspace": one-command git-over-ssh sync (branch + uncommitted work + env files), handoff brief at `~/.timeless/handoffs/`, autonomous tmux launch steerable from claude.ai. |
 | `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. |
-| `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (SHA256SUMS-verified), then `exec tireless-connect mcp`. |
+| `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (signature-verified against the pinned release key in `plugin/share/`, then hash-checked against the signed SHA256SUMS), then `exec tireless-connect mcp`. |
 | `install.sh` | Multi-client installer for Codex/Cursor (`--codex --cursor --skills-only --all`). Marker-delimited, never duplicates. |
 | `agents/AGENTS.snippet.md` | Compact AGENTS.md degradation of the skills. |
 | `evals/eval.xml` | Read-only MCP evaluations (mcp-builder format). |
@@ -77,6 +77,12 @@ Then say: *"connect to my workspace"*.
 - **The Claude plugin is self-contained**: its launcher downloads
   `tireless-connect` from `https://app.tirelesscode.com/connect/bin/<os>-<arch>`
   on first session and keeps it current against `GET /api/agent/version`.
+  Every download must verify: the SHA256SUMS manifest carries a detached
+  ECDSA signature made with the platform's offline release key, and the
+  launcher checks it against the public key pinned in the plugin
+  (`plugin/share/release-pub.pem`, installed from this repo) before hashing
+  the binary — so the download origin alone cannot push executable code, and
+  an unverifiable download never runs (fail closed).
 
 **Prefer plain HTTP?** The dashboard's API page
 (`https://app.tirelesscode.com/dashboard/api`) mints personal API keys that
@@ -97,6 +103,17 @@ itself keeps using its OAuth login; that stays the primary path for agents.
   workspace and start an agent on it), and **every** `ssh` command.
 - **Tokens never transit the chat**: logins happen in your own terminal; the
   skills instruct agents to never request, echo, or log tokens.
+- **Binary supply chain is signature-gated**: `tireless-connect` downloads
+  (plugin launcher and `install.sh`) only execute after the SHA256SUMS
+  manifest verifies against the ECDSA release public key pinned in this repo
+  and the binary hash matches the signed manifest. The signing key stays
+  offline; a compromised download origin or bucket cannot push code by
+  itself.
+- **Hand-back never writes outside the repo**: `tireless-handoff-pull`
+  extracts workspace archives into a scratch dir and validates every path —
+  and every destination directory, symlinks included — before copying, so a
+  hostile or compromised workspace cannot escape the repo through the tar or
+  a planted symlink.
 - **Server-side limits don't trust the agent**: agent-scoped tokens get
   `403 {"error":"agent_scope"}` on workspace deletion, all billing, and all
   admin routes. Lifecycle mutations via the Coder API are forbidden and
@@ -115,6 +132,7 @@ tireless-agent/
 │   ├── .claude-plugin/plugin.json
 │   ├── .mcp.json                     # → bin/launch-mcp.sh (stdio)
 │   ├── bin/                          # launcher + PATH-visible script wrappers
+│   ├── share/release-pub.pem         # pinned release-signing public key (offline key pair)
 │   ├── skills/{connect,fix,workspace,marketplace,clipboard,continue}/SKILL.md
 │   ├── scripts/                      # POSIX sh, KEY=val output, shellcheck-clean
 │   └── reference/{remote-exec,lifecycle,handoff}.md

@@ -30,7 +30,7 @@ case "$WS" in -*|*[!a-zA-Z0-9.-]*)
   exit 2 ;;
 esac
 
-err_file="${TMPDIR:-/tmp}/tireless-verify.$$"
+err_file="$(mktemp "${TMPDIR:-/tmp}/tireless-verify.XXXXXX")"
 trap 'rm -f "$err_file"' EXIT
 
 # Resolution IS a successful probe for bare names; a full alias still gets

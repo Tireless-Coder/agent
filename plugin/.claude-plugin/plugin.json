@@ -1,6 +1,6 @@
 {
   "name": "tireless",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Tireless Agent Connector — connect this agent to your Tireless cloud dev computer (tirelesscode.com): install the tireless CLI, authenticate, run commands over ssh <workspace>.tireless, open editors, share preview ports, browse the marketplace and install tools, check workspace health, manage the game port, fix clipboard paste, hand a session off to continue on the workspace, pull the workspace's work back afterwards, and self-diagnose.",
   "homepage": "https://tirelesscode.com",
   "license": "MIT",

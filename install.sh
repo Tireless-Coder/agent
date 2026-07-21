@@ -107,21 +107,36 @@ if [ "$SKILLS_ONLY" = 0 ]; then
     echo "[..] installing tireless-connect ($os/$arch)"
     mkdir -p "$BIN_DIR"
     tmp="$BIN_DIR/.tireless-connect.$$"
+    sums="$BIN_DIR/.tireless-sums.$$"
+    sig="$BIN_DIR/.tireless-sums.sig.$$"
     ok=0
-    if curl -fsSL "$APP_ORIGIN/connect/bin/$os-$arch" -o "$tmp"; then
-      # Integrity gate (same pattern as plugin/bin/launch-mcp.sh): SHA256SUMS
-      # is published next to the binaries, so a corrupted or tampered
-      # download never gets installed. Fail closed.
-      expected="$(curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" 2>/dev/null \
-        | awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' || true)"
-      if [ -z "$expected" ]; then
-        echo "[!]  checksum manifest unavailable — refusing the downloaded binary" >&2
-      elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
-        echo "[!]  checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary" >&2
+    if curl -fsSL "$APP_ORIGIN/connect/bin/$os-$arch" -o "$tmp" \
+      && curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" -o "$sums" \
+      && curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS.sig" -o "$sig"; then
+      # Authenticity gate (same pattern as plugin/bin/launch-mcp.sh): the
+      # checksum manifest must carry a valid ECDSA signature from the release
+      # key pinned in THIS source tree (a local checkout or the pinned-commit
+      # GitHub tarball — never the download origin), then the binary hash is
+      # checked against the signed manifest. Fail closed.
+      PUBKEY="$SRC/plugin/share/release-pub.pem"
+      if [ ! -f "$PUBKEY" ]; then
+        echo "[!]  release public key missing ($PUBKEY) — refusing the downloaded binary" >&2
+      elif ! command -v openssl >/dev/null 2>&1; then
+        echo "[!]  openssl unavailable — cannot verify the release signature, refusing the download" >&2
+      elif ! openssl dgst -sha256 -verify "$PUBKEY" -signature "$sig" "$sums" >/dev/null 2>&1; then
+        echo "[!]  manifest signature invalid — refusing the downloaded binary" >&2
       else
-        ok=1
+        expected="$(awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' "$sums")"
+        if [ -z "$expected" ]; then
+          echo "[!]  no manifest entry for tireless-connect-$os-$arch — refusing the downloaded binary" >&2
+        elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
+          echo "[!]  checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary" >&2
+        else
+          ok=1
+        fi
       fi
     fi
+    rm -f "$sums" "$sig"
     if [ "$ok" = 1 ]; then
       chmod 0755 "$tmp"
       # Same-directory rename: atomic swap, never a half-written binary.
