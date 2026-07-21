@@ -325,12 +325,14 @@ if [ -s "$TMP_DIR/rlist.txt" ]; then
     || fail "could not hash the workspace's untracked files"
   paste "$TMP_DIR/rhashes.txt" "$TMP_DIR/rlist.txt" >"$TMP_DIR/rpaired.txt"
   : >"$TMP_DIR/include.z"
+  : >"$TMP_DIR/include.txt"
   : >"$TMP_DIR/skipped.txt"
   TAB="$(printf '\t')"
   while IFS="$TAB" read -r h f; do
     [ -n "$f" ] || continue
     if [ ! -e "$f" ]; then
       printf '%s\0' "$f" >>"$TMP_DIR/include.z"
+      printf '%s\n' "$f" >>"$TMP_DIR/include.txt"
       UNTRACKED_IN=$((UNTRACKED_IN + 1))
     elif [ "$(git hash-object -- "$f" 2>/dev/null)" = "$h" ]; then
       UNTRACKED_SAME=$((UNTRACKED_SAME + 1))
@@ -342,8 +344,35 @@ if [ -s "$TMP_DIR/rlist.txt" ]; then
   if [ "$UNTRACKED_IN" -gt 0 ]; then
     rsh "cd '$TARGET_DIR' && tar -czf - --null -T -" <"$TMP_DIR/include.z" >"$TMP_DIR/untracked.tgz" \
       || fail "could not archive the workspace's untracked files"
-    tar -xzf "$TMP_DIR/untracked.tgz" \
+    # The archive BYTES are remote-produced, so it never unpacks into the
+    # repo directly: extract into a scratch dir, then copy across only the
+    # listed paths — each must be relative, carry no '..' component, and
+    # resolve (symlinks included) inside the scratch dir. A tampered remote
+    # tar (absolute paths, dot-dot segments, symlink-chained entries) then
+    # cannot write outside the repo.
+    mkdir "$TMP_DIR/x"
+    tar -xzf "$TMP_DIR/untracked.tgz" -C "$TMP_DIR/x" \
       || fail "could not extract the workspace's untracked files locally"
+    xphys="$(CDPATH='' cd -P "$TMP_DIR/x" && pwd -P)"
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$f" in
+        /*|..|../*|*/..|*/../*) fail "workspace archive carries an unsafe path: $f" ;;
+      esac
+      src="$TMP_DIR/x/$f"
+      [ -L "$src" ] || [ -f "$src" ] \
+        || fail "workspace archive is missing a listed file: $f"
+      resolved="$(CDPATH='' cd -P "$(dirname "$src")" 2>/dev/null && pwd -P)" \
+        || fail "workspace archive carries an unresolvable path: $f"
+      case "$resolved" in
+        "$xphys"|"$xphys/"*) ;;
+        *) fail "workspace archive escapes its tree through a symlink: $f" ;;
+      esac
+      mkdir -p "$(dirname "$ROOT/$f")" \
+        || fail "could not create the directory for an untracked file: $f"
+      cp -RPp "$src" "$ROOT/$f" \
+        || fail "could not restore an untracked file: $f"
+    done <"$TMP_DIR/include.txt"
   fi
   if [ "$UNTRACKED_SKIPPED" -gt 0 ]; then
     mkdir -p "$HOME/.timeless/handoffs/back"

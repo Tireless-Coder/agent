@@ -60,6 +60,15 @@ case "$(uname -s)" in
   *) echo "error: unsupported OS '$(uname -s)'." >&2; exit 1 ;;
 esac
 
+# sha256 of a file, portable across darwin (shasum) and linux (sha256sum).
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 # Resolve the source tree: a local checkout when run from the repo, else a
 # fresh tarball (`curl | sh` has no checkout to read from).
 CLEANUP=""
@@ -97,9 +106,32 @@ if [ "$SKILLS_ONLY" = 0 ]; then
   else
     echo "[..] installing tireless-connect ($os/$arch)"
     mkdir -p "$BIN_DIR"
-    curl -fsSL "$APP_ORIGIN/connect/bin/$os-$arch" -o "$BIN_DIR/tireless-connect"
-    chmod 0755 "$BIN_DIR/tireless-connect"
-    CONNECT_BIN="$BIN_DIR/tireless-connect"
+    tmp="$BIN_DIR/.tireless-connect.$$"
+    ok=0
+    if curl -fsSL "$APP_ORIGIN/connect/bin/$os-$arch" -o "$tmp"; then
+      # Integrity gate (same pattern as plugin/bin/launch-mcp.sh): SHA256SUMS
+      # is published next to the binaries, so a corrupted or tampered
+      # download never gets installed. Fail closed.
+      expected="$(curl -fsSL "$APP_ORIGIN/connect/bin/SHA256SUMS" 2>/dev/null \
+        | awk -v n="tireless-connect-$os-$arch" '$2 == n { print $1 }' || true)"
+      if [ -z "$expected" ]; then
+        echo "[!]  checksum manifest unavailable — refusing the downloaded binary" >&2
+      elif [ "$(sha256_of "$tmp")" != "$expected" ]; then
+        echo "[!]  checksum mismatch for tireless-connect-$os-$arch — refusing the downloaded binary" >&2
+      else
+        ok=1
+      fi
+    fi
+    if [ "$ok" = 1 ]; then
+      chmod 0755 "$tmp"
+      # Same-directory rename: atomic swap, never a half-written binary.
+      mv -f "$tmp" "$BIN_DIR/tireless-connect"
+      CONNECT_BIN="$BIN_DIR/tireless-connect"
+    else
+      rm -f "$tmp"
+      echo "error: could not install a verified tireless-connect binary." >&2
+      exit 1
+    fi
   fi
   # init is idempotent: parse-modify-write for JSON, marker-delimited append
   # for TOML — it never clobbers unrelated keys.

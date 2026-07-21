@@ -23,6 +23,13 @@ if [ "$#" -lt 1 ] || [ -z "$1" ]; then
 fi
 WS="$1"
 
+# Same interpolation-safety rule as the handoff scripts: WS ends up in ssh
+# argv — constrain it to a safe charset instead of escaping heroics.
+case "$WS" in -*|*[!a-zA-Z0-9.-]*)
+  echo "verify.sh: workspace name has unsupported characters" >&2
+  exit 2 ;;
+esac
+
 err_file="${TMPDIR:-/tmp}/tireless-verify.$$"
 trap 'rm -f "$err_file"' EXIT
 

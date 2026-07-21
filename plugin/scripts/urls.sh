@@ -33,6 +33,12 @@ if [ "$#" -lt 1 ] || [ -z "$1" ]; then
 fi
 WS="$1"
 TARGET="${2:-}"
+# Same interpolation-safety rule as the handoff scripts: WS ends up in ssh
+# argv — constrain it to a safe charset instead of escaping heroics.
+case "$WS" in -*|*[!a-zA-Z0-9.-]*)
+  echo "urls.sh: workspace name has unsupported characters" >&2
+  exit 2 ;;
+esac
 # Links want the bare workspace name for paths; an alias argument still works
 # (first label = workspace name).
 WS_NAME="${WS%%.*}"

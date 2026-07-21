@@ -21,6 +21,14 @@ BIN_DIR="$HOME/.local/bin"
 SSH_CONFIG="$HOME/.ssh/config"
 CLIP_CONFIG_FILE="$HOME/.ssh/tireless_clip_config"
 WS="${1:-}"
+# Same interpolation-safety rule as the handoff scripts: WS ends up in ssh
+# argv — constrain it to a safe charset instead of escaping heroics.
+if [ -n "$WS" ]; then
+  case "$WS" in -*|*[!a-zA-Z0-9.-]*)
+    echo "clip-doctor.sh: workspace name has unsupported characters" >&2
+    exit 2 ;;
+  esac
+fi
 
 CLIP_BIN=""
 if command -v tireless-clip >/dev/null 2>&1; then
