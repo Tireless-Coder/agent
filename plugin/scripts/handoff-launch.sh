@@ -76,8 +76,21 @@ rsh() {
 # Every mode needs a reachable workspace; without this gate an ssh-level
 # failure (exit 255) is indistinguishable from "no tmux session". Resolving
 # the alias (regional suffixes; legacy .tireless last) IS that gate.
-HOST="$(tireless_resolve_alias "$WS")" \
-  || fail "workspace unreachable over ssh (no alias for '$WS' answers) — run the fix skill"
+# A dead 8h Coder session silences every alias, so heal once in-process (this
+# script is already prompt-gated) before calling the workspace unreachable.
+#
+# Resolution alone is NOT that gate for a full alias: tireless_resolve_alias
+# trusts anything containing a dot and echoes it back without probing — and a
+# full alias is exactly what the connect and continue skills hand us. So probe
+# explicitly, and let the heal cover both shapes.
+HOST="$(tireless_resolve_alias "$WS")" || {
+  tireless_heal_once && HOST="$(tireless_resolve_alias "$WS")"
+} || fail "workspace unreachable over ssh (no alias for '$WS' answers) — run the fix skill"
+if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK; then
+  tireless_heal_once || fail "workspace unreachable over ssh (alias '$HOST' does not answer) — run the fix skill"
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK \
+    || fail "workspace unreachable over ssh (alias '$HOST' does not answer) — run the fix skill"
+fi
 
 # Probe that separates "session alive/gone" from "ssh broke mid-flight".
 # `=` pins the exact tmux session name — bare -t prefix-matches, which could

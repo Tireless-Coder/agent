@@ -63,4 +63,32 @@
     <question>tireless_doctor reports the fix code E_EDGE_BLOCK. Will having the user re-run tireless-connect login fix it? Answer yes or no.</question>
     <answer>no</answer>
   </qa_pair>
+  <qa_pair>
+    <question>The user's laptop has been asleep overnight. Their per-cell Coder session has aged past the cell's session cap and tireless_doctor's coder_login check initially fails. Does the user have to sign in again in a browser before you can continue? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An expired per-cell Coder session needs re-minting from inside an agent's non-interactive shell. Which tireless-connect subcommand is designed for that — it never opens a browser and never reads a tty? Answer with the subcommand name only.</question>
+    <answer>ensure-session</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-connect ensure-session exits with status 3. What does that specific exit code mean, as distinct from exit 1?</question>
+    <answer>Exit 3 means an interactive sign-in is required: the platform session itself is dead, so nothing can be minted headlessly and the user must run tireless-connect login in their own terminal. Exit 1 is ordinary/unexpected failure, which does not by itself call for a user sign-in.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless_doctor reports the fix code E_SSH_STALE. Does this mean the user's workspace is currently unreachable over ssh? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A user's ~/.ssh/config contains a stock-Coder marker block whose ProxyCommand runs /usr/local/bin/coder — they also use a real Coder deployment at work. Should the stale-block cleanup remove that block? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>After tireless-handoff-sync reports SYNC=ok, which output key tells you whether the project's own CLAUDE.md / AGENTS.md received the Tireless workspace stanza? Answer with the key name only.</question>
+    <answer>PROJECT_NOTE</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-handoff-sync finishes with PROJECT_NOTE=written and PROJECT_NOTE_TRACKED=yes. What is the one thing you must tell the user about that, beyond the fact that the note was written?</question>
+    <answer>The file it wrote to is tracked by git, so the stanza — which names this machine's specific ssh alias and a workspace-only path — shows up as a commitable diff and could be pushed to teammates; they may want to drop or ignore it.</answer>
+  </qa_pair>
 </evaluation>

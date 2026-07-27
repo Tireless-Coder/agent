@@ -44,6 +44,18 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 myws.tireless 'echo ok'
 `ConnectTimeout` bounds the wait. `tireless ping <ws>` additionally
 distinguishes control-plane-unreachable from workspace-agent-down.
 
+## When ssh suddenly stops working after a break
+
+Almost always the 8-hour Coder session expiring, not a broken workspace —
+cells cap sessions with no sliding refresh, so a laptop that slept wakes up
+signed out of its cell and EVERY alias goes quiet at once. `tireless-verify`
+names it (`CAUSE=session_expired`) and `tireless-preflight` reports
+`AUTH=expired`. Fix it yourself with `tireless-session-heal`: the platform
+re-mints the session server-side — no browser, no paste, no token in the chat
+— then retry the command that failed. Do not walk the fix skill's tree for
+this, and do not ask the user to log in unless the heal says
+`SESSION=action_required`.
+
 ## Long jobs (>2 minutes): detach with tmux
 
 Bash tools time out (Claude Code: 2 min default, 10 max). Run long builds,

@@ -1,0 +1,7 @@
+#!/bin/sh
+# PATH-visible wrapper (Claude Code adds plugin bin/ to the Bash PATH) so
+# skills can name the narrow command `tireless-ssh-clean` instead of an
+# uninstallable absolute path.
+set -eu
+dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+exec sh "$dir/scripts/ssh-clean.sh" "$@"

@@ -168,12 +168,34 @@ if [ -n "$REC_ALIAS" ]; then
     HOST="$REC_ALIAS"
   fi
 fi
+# An expired 8h Coder session silences every alias, so a failure here is far
+# more often routine re-auth than a dead workspace — heal once in-process
+# rather than reporting the scarier diagnosis.
+#
+# ONLY in pull mode. `--check` is what the pre-approved `tireless-handoff-check`
+# wrapper runs, and that command is pre-approved precisely BECAUSE it is
+# read-only; minting a credential and rewriting ~/.ssh/config underneath it
+# would make the pre-approval a lie. In check mode we say what is wrong and
+# let the caller run the (prompt-gated) heal deliberately.
+maybe_heal() {
+  if [ "$CHECK" = 1 ]; then return 1; fi
+  tireless_heal_once
+}
+unreachable() {
+  if [ "$CHECK" = 1 ] && tireless_session_expired; then
+    fail "workspace unreachable because this machine's Coder session has expired (routine — cells cap them at 8h): run tireless-session-heal, then re-run this check"
+  fi
+  fail "workspace unreachable over ssh — run the fix skill (workspace gone for good? handoff-pull.sh --forget clears the record)"
+}
 if [ -z "$HOST" ]; then
-  HOST="$(tireless_resolve_alias "$WS")" \
-    || fail "workspace unreachable over ssh — run the fix skill (workspace gone for good? handoff-pull.sh --forget clears the record)"
+  HOST="$(tireless_resolve_alias "$WS")" || {
+    maybe_heal && HOST="$(tireless_resolve_alias "$WS")"
+  } || unreachable
 fi
-rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK \
-  || fail "workspace unreachable over ssh — run the fix skill (workspace gone for good? handoff-pull.sh --forget clears the record)"
+if ! rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK; then
+  maybe_heal || unreachable
+  rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK || unreachable
+fi
 
 facts="$(rsh "if [ ! -d '$TARGET_DIR' ]; then echo RD=missing; \
 elif [ ! -d '$TARGET_DIR/.git' ]; then echo RD=not_repo; \

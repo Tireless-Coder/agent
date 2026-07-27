@@ -53,12 +53,25 @@ already received a successful connection card for the selected workspace:
 This makes “open my server in VS Code” one intent: the user should not have to
 ask separately for SSH setup, resume, verification, and launch.
 
-In the Claude Code plugin itself, a plain “open/connect my server in Claude
-Code” means connect THIS session; the successful connection card plus
-`VERIFY=ok` completes the request. Call `tireless_open_editor` with
-`editor: "claude"` only when the user explicitly asks for a fresh/new/another
-Claude Code session, so the plugin does not open a duplicate window
-unexpectedly.
+In the Claude Code plugin itself, “open/connect my server” DEFAULTS to
+connecting THIS session — the successful connection card plus `VERIFY=ok`
+completes the request and the user keeps working right here. Opening
+`editor: "claude"` spawns a SEPARATE local Claude Code window (a new terminal
+with a prefilled prompt to press Enter), so it is a distinct choice, never the
+default.
+
+When the request is ambiguous about WHERE to work — “open the server in a
+terminal”, “get me into the server”, “open it”, “connect to it” — ASK before
+launching anything, in one line:
+
+> Work on it right here in this session, or open it in a new Claude Code
+> terminal window?
+
+Only call `tireless_open_editor` with `editor: "claude"` after the user asks for
+a fresh/new/another session or answers “new window”. Otherwise connect THIS
+session (`tireless_connect_workspace` → `VERIFY=ok`) and start working — do not
+open a duplicate window unexpectedly. If the user has clearly already asked for
+a new window, skip the question.
 
 Run `tireless-urls <ws> [slug|port]`
 (Codex/Cursor: `sh ~/.agents/skills/tireless/scripts/urls.sh <ws> [slug|port]`)

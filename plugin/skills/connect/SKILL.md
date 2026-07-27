@@ -16,7 +16,12 @@ idempotent; skip steps whose preflight key already says ok.
   session cookie into the conversation; never echo, print, or log one. All
   interactive logins happen in the USER'S OWN terminal — you tell them the
   exact command, they run it there and reply "done". If a user pastes a token
-  into chat anyway, tell them to revoke it immediately.
+  into chat anyway, tell them to revoke it immediately. Re-minting an EXPIRED
+  per-cell Coder session is NOT interactive and is yours to do: run
+  `tireless-session-heal` (server-minted, no browser, no paste). Never
+  substitute `tireless-connect login` for it — when the platform token is also
+  dead that command opens a browser and blocks on the loopback callback, which
+  hangs your Bash tool and the session with it.
 - **Never** run `tireless start|stop|delete|create` or call the Coder API.
   Lifecycle belongs to the platform reconciler — see the lifecycle reference
   (Claude Code: `${CLAUDE_PLUGIN_ROOT}/reference/lifecycle.md`; Codex/Cursor:
@@ -27,11 +32,13 @@ idempotent; skip steps whose preflight key already says ok.
 
 ## Script locations
 
-- Claude Code (plugin): the wrappers `tireless-preflight`, `tireless-verify`
-  are already on your Bash PATH.
-- Codex / Cursor (installer): run
-  `sh ~/.agents/skills/tireless/scripts/preflight.sh` and
-  `sh ~/.agents/skills/tireless/scripts/verify.sh <workspace>`.
+- Claude Code (plugin): the wrappers `tireless-preflight`, `tireless-verify`,
+  `tireless-session-heal`, `tireless-ssh-clean`, `tireless-project-note` are
+  already on your Bash PATH.
+- Codex / Cursor (installer): the same scripts live under
+  `~/.agents/skills/tireless/scripts/` — `sh …/preflight.sh`,
+  `sh …/verify.sh <workspace>`, `sh …/session-heal.sh`, `sh …/ssh-clean.sh`,
+  `sh …/project-note.sh <alias> <dir> <branch>`.
 
 ## Step 0 — preflight
 
@@ -41,8 +48,9 @@ lines; branch on exact string matches:
 | Key | Meaning |
 |---|---|
 | `CLI` | `tireless` CLI installed |
-| `AUTH` | Coder session valid (`tireless list` exits 0) |
+| `AUTH` | `ok` / `expired` (routine 8h expiry — heals headlessly, see below) / `error` (network, not auth — do not heal) / `missing` (never set up here) |
 | `SSHCFG` | `*.tireless` block in `~/.ssh/config` |
+| `SSHCFG_STALE` + `SSHCFG_STALE_OURS` | a dead stock-Coder block lingers, and whether it is provably ours to remove |
 | `CLIP` | clipboard companion installed + wired (`stale` = installed, not wired) |
 | `CONNECT` | `tireless-connect` MCP binary present |
 | `PATHOK` | `~/.local/bin` on PATH |
@@ -81,24 +89,38 @@ and would hang your Bash tool. Auth happens in Step 2 instead.
    it returns and wait for it to report completion.
 3. Call `tireless_connect_workspace` — it runs the whole idempotent pipeline
    (CLI install, login, ssh config, clip setup, resume-if-suspended) and
-   returns a connection card. When it needs the per-cell Coder login, it will
-   tell you to direct the user to run a command in their own terminal — do
-   exactly that and wait for "done".
+   returns a connection card. It re-mints expired per-cell Coder sessions
+   headlessly on its own; only if it returns an explicit `action_required`
+   card do you direct the user to run the command it names in their own
+   terminal — then wait for "done".
+
+**`AUTH=expired` — handle it yourself, silently.** This is the ordinary
+overnight state, not a problem to report. Run `tireless-session-heal`; it
+re-mints through the platform (server-minted, no browser, no paste, no token
+in chat) and prints `SESSION=healed`. Re-run the preflight and carry on
+without mentioning it, unless it returns `SESSION=action_required` — then
+follow its `NEXT=` line. (`AUTH=error` is NOT this: that is a network or edge
+problem, and healing into it is wrong — go to the fix skill.)
 
 **Fallback — no MCP tools** (`AUTH=missing`):
 
-- If `CONNECT=ok`: tell the user — "Run `tireless-connect login` in your own
-  terminal. A browser opens for a one-click approval; if a region asks, it
-  opens that region's Coder sign-in automatically — no button to click, just
-  paste the token it shows into that terminal, never here. Say 'done' when it
-  finishes."
+- If `CONNECT=ok`: run `tireless-session-heal` first — with a valid stored
+  platform session it establishes the Coder session headlessly. Only when it
+  reports `SESSION=action_required` does the user get involved: "Run
+  `tireless-connect login` in your own terminal. A browser opens for a
+  one-click approval; if a region asks, it opens that region's Coder sign-in
+  automatically — no button to click, just paste the token it shows into that
+  terminal, never here. Say 'done' when it finishes."
+  Never run `tireless-connect login` from your OWN Bash tool: with a dead
+  platform token it opens a browser and blocks on the loopback callback,
+  which hangs your session. `tireless-session-heal` cannot do that.
 - If `CONNECT=missing`: install it first
   (`curl -fsSL https://app.tirelesscode.com/connect/install.sh | sh`), then the
   `tireless-connect login` flow above. (A raw `tireless login <cpUrl>` is NOT
   a substitute — it writes a default-dir session that no regional ssh config
   reads.)
-- After "done": re-run the preflight. `AUTH=ok` means proceed; still
-  `missing` means switch to the fix skill.
+- After "done": re-run the preflight. `AUTH=ok` means proceed; anything else
+  means switch to the fix skill.
 
 ## Step 3 — SSH config (when SSHCFG=missing)
 
@@ -110,9 +132,14 @@ Writes the marker-wrapped Include in `~/.ssh/config` plus per-region
 fragment files (`Host *.<region>.tireless` with a ProxyCommand — no host-key
 prompts, safe for non-interactive use). Never run bare
 `tireless config-ssh --yes`: it targets the stock coderv2 config dir and
-writes a block no supported flow reads. `SSHCFG_STALE=yes` in the preflight
-means an old Coder-branded block lingers — offer to remove it (show the
-lines first).
+writes exactly the dead block described next.
+
+`SSHCFG_STALE=yes` + `SSHCFG_STALE_OURS=yes`: a dead block from an old run of
+that command is still in `~/.ssh/config`. Run `tireless-ssh-clean` — it
+backs the file up first and removes only blocks whose every ProxyCommand runs
+the Tireless CLI. Mention it in one line afterwards; don't make a
+conversation of it. With `SSHCFG_STALE_OURS=no` the block may belong to a
+real Coder deployment the user runs: say it is there, and leave it alone.
 
 ## Step 4 — clipboard bridge (when CLIP=stale|missing)
 
@@ -149,24 +176,31 @@ name gets resolved against the regional suffixes automatically.
 Optionally also verify paste (clipboard skill): ask the user to copy a
 screenshot, then check for the PNG magic over ssh.
 
-## Step 7 — offer the project stanza
+## Step 7 — the project stanza
 
-Ask: "Want me to add a remote-exec note to this project's CLAUDE.md /
-AGENTS.md so future sessions use the workspace correctly?" Only on yes,
-append:
+**Usually there is nothing to do here.** The stanza is written automatically
+by `tireless-handoff-sync`, because that is the only command that knows the
+real remote directory and branch — and the stanza asserts the project *is
+synced to* the workspace, which after a bare connect is simply not true. So:
+
+- Came here from a handoff (`continue` skill)? Already done — skip.
+- Plain connect, no sync? Write nothing. Offer instead: "want me to sync this
+  project to the workspace?" — the sync writes the note as part of its job.
+- User explicitly asks for the note *and* the project already lives on the
+  workspace at a path they name, use:
 
 ```
-## Tireless workspace
-Remote workspace `<workspace>` (ssh alias `<ALIAS from tireless-verify>`):
-run commands as `ssh <alias> 'cd <dir> && <cmd>'` — every ssh call is a
-fresh shell, so always cd-prefix. Probes: `-o BatchMode=yes -o
-ConnectTimeout=10`. Jobs >2 min: `tmux new -d`. Cap output with `| tail -100`.
-Never `tireless start|stop|delete|create`; lifecycle only via the Tireless
-dashboard or tireless_* MCP tools.
+tireless-project-note <ALIAS> <remote-dir> <branch>
 ```
 
-(Substitute the real alias — e.g. `myws.eu-central.tireless` — before
-appending; never write the placeholder literally.)
+(Codex/Cursor: `sh ~/.agents/skills/tireless/scripts/project-note.sh <ALIAS> <remote-dir> <branch>`.)
+
+It is marker-wrapped, refreshed in place on later runs, and backs the file up
+outside the repo first. Report it in one line — including `TRACKED=yes` when
+the file is under git, because the stanza names a machine-specific alias that
+would reach teammates if committed. Never invent a `<remote-dir>`/`<branch>`
+to satisfy the arguments: writing a wrong path into persistent project memory
+misleads every future session in that repo.
 
 ## Step 8 — report
 
@@ -177,6 +211,9 @@ paste in agents on the workspace."
 
 If the user's original request included VS Code or another external surface,
 continue after verification by calling `tireless_open_editor` with that editor.
-For Claude Code, this verified plugin session is already connected; launch
-`editor: "claude"` only if they explicitly asked for a fresh/new session. Do
-not make them repeat the request.
+For Claude Code, this verified plugin session is already connected; launching
+`editor: "claude"` opens a SEPARATE new terminal window. Only do that when the
+user explicitly asked for a fresh/new session. If “open it in a terminal” /
+“get me into the server” is ambiguous, ASK first — “Work here in this session,
+or open a new Claude Code terminal window?” — rather than spawning a new window.
+Do not make them repeat the request.

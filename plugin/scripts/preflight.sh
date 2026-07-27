@@ -5,15 +5,31 @@
 # can branch on string equality instead of parsing shell noise:
 #
 #   CLI=ok|missing         tireless CLI (rebranded Coder CLI) found
-#   AUTH=ok|missing        a REGIONAL Coder session answers `list` (the only
+#   AUTH=ok|expired|error|missing
+#                          a REGIONAL Coder session answers `list` (the only
 #                          sessions the ssh configs actually use; the legacy
-#                          default-dir probe is the last resort)
+#                          default-dir probe is the last resort).
+#                          expired = sessions were established here before and
+#                          simply aged out (cells cap them at 8h, so this is
+#                          the normal overnight state) — `tireless-session-heal`
+#                          re-mints them headlessly, no user action needed.
+#                          error   = the probe failed for a NON-auth reason
+#                          (network, edge block, CLI crash) — do not heal.
+#                          missing = nothing was ever set up on this machine.
 #   SSHCFG=ok|missing      a managed Include block (installer TIRELESS-CELLS
 #                          or tireless-connect markers) is in ~/.ssh/config
 #                          AND at least one regional fragment file exists
-#   SSHCFG_STALE=yes|no    a stock Coder-branded block (Host coder.* etc.)
-#                          lingers in ~/.ssh/config from an old setup — it
-#                          resolves nothing current; offer to clean it up
+#   SSHCFG_STALE=yes|no    a stock Coder-branded block lingers in
+#                          ~/.ssh/config from an old setup — it resolves
+#                          nothing current
+#   SSHCFG_STALE_OURS=yes|no|n/a
+#                          yes = every ProxyCommand in it runs the Tireless
+#                          CLI, so it is provably our own litter and
+#                          `tireless-ssh-clean` removes it. no = it may belong
+#                          to a real Coder deployment the user runs — report
+#                          it, never touch it.
+#   SSHCFG_STALE_LINES=<a-b,...>|none
+#                          line ranges of the removable blocks
 #   CLIP=ok|stale|missing  tireless-clip binary + managed ssh include wired
 #   CONNECT=ok|missing     tireless-connect (MCP server binary) found
 #   PATHOK=yes|no          ~/.local/bin is on PATH
@@ -22,7 +38,9 @@
 # Read-only: probes never mutate state, so this script is safe to pre-approve.
 set -eu
 
-. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/alias.sh"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+. "$SCRIPT_DIR/alias.sh"
+. "$SCRIPT_DIR/sshscan.sh"
 
 APP_ORIGIN="${TIRELESS_APP_ORIGIN:-https://app.tirelesscode.com}"
 BIN_DIR="$HOME/.local/bin"
@@ -44,15 +62,36 @@ if [ -n "$CLI_BIN" ]; then echo "CLI=ok"; else echo "CLI=missing"; fi
 # <UserConfigDir>/tireless-connect/coder/<region>) — a bare `tireless list`
 # reads the stock coderv2 dir, which no supported setup ever writes. Probe
 # every regional dir; fall back to the bare probe only for ancient installs.
+#
+# The probe now keeps the CLI's own stderr verdict instead of discarding it,
+# because `expired` and `missing` demand opposite responses: expired heals
+# headlessly with no user action, missing is onboarding. Reporting both as
+# `missing` is what made a routine overnight expiry look like a broken
+# install. `error` (network/edge/CLI) is kept separate too — healing into an
+# outage is the wrong move.
 AUTH=missing
+SEEN_EXPIRED=no
+SEEN_ERROR=no
+SEEN_ANY=no
 if [ -n "$CLI_BIN" ]; then
   while IFS= read -r d; do
-    [ "$AUTH" = ok ] && continue
-    if "$CLI_BIN" --global-config "$d" list >/dev/null 2>&1; then AUTH=ok; fi
+    [ -n "$d" ] || continue
+    SEEN_ANY=yes
+    case "$(tireless_session_probe "$d")" in
+      ok) AUTH=ok ;;
+      expired) SEEN_EXPIRED=yes ;;
+      error) SEEN_ERROR=yes ;;
+    esac
   done <<EOF
 $(tireless_coder_dirs)
 EOF
-  if [ "$AUTH" = missing ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
+  # Legacy single-region installs kept their session in the stock default dir.
+  if [ "$AUTH" != ok ] && [ "$SEEN_ANY" = no ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
+  if [ "$AUTH" != ok ]; then
+    if [ "$SEEN_EXPIRED" = yes ]; then AUTH=expired
+    elif [ "$SEEN_ERROR" = yes ]; then AUTH=error
+    fi
+  fi
 fi
 echo "AUTH=$AUTH"
 
@@ -68,10 +107,30 @@ elif grep -qsE '^[[:space:]]*Host[[:space:]].*\.tireless([[:space:]]|$)' "$SSH_C
   SSHCFG=ok
 fi
 echo "SSHCFG=$SSHCFG"
-if grep -qsE '^[[:space:]]*Host[[:space:]]+(coder\.\*|\*\.coder)([[:space:]]|$)' "$SSH_CONFIG"; then
-  echo "SSHCFG_STALE=yes"
-else
+
+# Stale stock-Coder block. The scan (sshscan.sh) reads the block's own
+# ProxyCommand rather than just its Host pattern, so a real Coder deployment
+# the user actually uses is never mistaken for our litter.
+STALE_SCAN="$(tireless_scan_stale_ssh "$(tireless_resolve_symlink "$SSH_CONFIG")")"
+if [ -z "$STALE_SCAN" ]; then
   echo "SSHCFG_STALE=no"
+  echo "SSHCFG_STALE_OURS=n/a"
+  echo "SSHCFG_STALE_LINES=none"
+else
+  STALE_OURS=no
+  STALE_LINES=""
+  OLDIFS=$IFS; IFS='
+'
+  for row in $STALE_SCAN; do
+    if [ "$(printf '%s\n' "$row" | awk '{print $4}')" = yes ]; then
+      STALE_OURS=yes
+      STALE_LINES="${STALE_LINES:+$STALE_LINES,}$(printf '%s\n' "$row" | awk '{print $2"-"$3}')"
+    fi
+  done
+  IFS=$OLDIFS
+  echo "SSHCFG_STALE=yes"
+  echo "SSHCFG_STALE_OURS=$STALE_OURS"
+  echo "SSHCFG_STALE_LINES=${STALE_LINES:-none}"
 fi
 
 CLIP_BIN=""

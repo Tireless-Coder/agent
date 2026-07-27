@@ -13,6 +13,10 @@
 #                        files etc.; repeatable; lands mode 0600)
 #   --force-overwrite    proceed when the remote branch has commits local
 #                        HEAD lacks (a remote backup branch is created first)
+#   --no-project-note    skip writing the Tireless stanza into this project's
+#                        CLAUDE.md / AGENTS.md (it is written by default: once
+#                        the code lives on a workspace, every later session in
+#                        the project needs the alias and the remote-exec rules)
 #   --tar-mode           no-history fallback: ship the tree without git.
 #                        Inside a work tree this still respects .gitignore
 #                        (tracked + untracked-not-ignored + --include only);
@@ -31,7 +35,8 @@
 #   SYNC=fail  DETAIL=...            unexpected breakage — switch to fix skill
 set -eu
 
-. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/alias.sh"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+. "$SCRIPT_DIR/alias.sh"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -42,10 +47,11 @@ BRIEF_FILE=""
 INCLUDES=""
 FORCE=0
 TAR_MODE=0
+PROJECT_NOTE=1
 REMOTE_STASHED=no
 
 usage() {
-  echo "usage: handoff-sync.sh <workspace> [--target-dir DIR] [--branch NAME] [--brief FILE] [--include PATH]... [--force-overwrite] [--tar-mode]" >&2
+  echo "usage: handoff-sync.sh <workspace> [--target-dir DIR] [--branch NAME] [--brief FILE] [--include PATH]... [--force-overwrite] [--tar-mode] [--no-project-note]" >&2
   exit 2
 }
 
@@ -76,7 +82,8 @@ backup_includes() {
 '
   for inc in $INCLUDES; do
     if rsh "[ -f '$TARGET_DIR/$inc' ] && mkdir -p \"\$HOME/.timeless/handoffs/pre-$TS/\$(dirname '$inc')\" && cp -p '$TARGET_DIR/$inc' \"\$HOME/.timeless/handoffs/pre-$TS/$inc\"" 2>/dev/null; then
-      # shellcheck disable=SC2088 -- a REMOTE path shown to the user, ~ is right
+      # A REMOTE path shown to the user, so the literal ~ is right here.
+      # shellcheck disable=SC2088
       INCLUDE_BACKUP="~/.timeless/handoffs/pre-$TS/"
     fi
   done
@@ -103,6 +110,7 @@ while [ $# -gt 0 ]; do
 }$2"; shift ;;
     --force-overwrite) FORCE=1 ;;
     --tar-mode) TAR_MODE=1 ;;
+    --no-project-note) PROJECT_NOTE=0 ;;
     *) usage ;;
   esac
   shift
@@ -182,10 +190,20 @@ fi
 # Resolution doubles as the reachability gate: a bare name is probed against
 # the regional suffixes the local ssh fragments define (legacy .tireless
 # last); a full alias (dots) is probed as-is.
-HOST="$(tireless_resolve_alias "$WS")" \
-  || fail "workspace unreachable over ssh (no alias for '$WS' answers) — run the fix skill"
-rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK \
-  || fail "workspace unreachable over ssh — run the fix skill"
+# An expired 8h Coder session makes every alias stop answering, which used to
+# be reported as "workspace unreachable — run the fix skill": a wrong
+# diagnosis that cost the user a turn every morning. Heal once, in-process,
+# and only on a definitive expiry verdict, before believing the failure.
+# (Resolution is not a probe for a FULL alias — it trusts any dotted name and
+# echoes it back — so the explicit probe below covers that shape.)
+HOST="$(tireless_resolve_alias "$WS")" || {
+  tireless_heal_once && HOST="$(tireless_resolve_alias "$WS")"
+} || fail "workspace unreachable over ssh (no alias for '$WS' answers) — run the fix skill"
+if ! rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK; then
+  tireless_heal_once || fail "workspace unreachable over ssh — run the fix skill"
+  rsh 'echo TIRELESS_OK' 2>/dev/null | grep -q TIRELESS_OK \
+    || fail "workspace unreachable over ssh — run the fix skill"
+fi
 
 # ---- tar-mode: tree snapshot, no git ceremony ------------------------------
 # Archive to a temp file FIRST: POSIX sh has no pipefail, so in a
@@ -427,6 +445,29 @@ ROOT_ID="$(printf '%s' "$REC_ROOT" | cksum | awk '{print $1}')"
   echo "RESOLVED=no"
 } >"$REC_DIR/$WS_NAME--$ROOT_ID.rec"
 
+# ---- project note (LOCAL side) ----------------------------------------------
+# The project now lives on a workspace, so every later session in this repo
+# needs the same facts: the alias, the remote dir, fresh-shell cd-prefixing,
+# and how to bring the work back. Writing them into the project's own agent
+# memory beats re-deriving them (or asking the user the same question after
+# every sync). Marker-wrapped and refreshed in place; --no-project-note opts
+# out. Never fatal: a sync that worked must not be reported as failed because
+# a memory file could not be written.
+NOTE=skipped
+NOTE_FILES=none
+NOTE_TRACKED=no
+if [ "$PROJECT_NOTE" = 1 ]; then
+  note_out="$(sh "$SCRIPT_DIR/project-note.sh" "$HOST" "$TARGET_DIR" "$BRANCH" --dir "${ROOT:-$PWD}" 2>&1)" || true
+  case "$note_out" in
+    NOTE=*)
+      NOTE="$(printf '%s\n' "$note_out" | sed -n 's/^NOTE=//p' | head -1)"
+      NOTE_FILES="$(printf '%s\n' "$note_out" | sed -n 's/^FILES=//p' | head -1)"
+      NOTE_TRACKED="$(printf '%s\n' "$note_out" | sed -n 's/^TRACKED=//p' | head -1)"
+      ;;
+    *) NOTE=fail ;;
+  esac
+fi
+
 echo "SYNC=ok"
 echo "MODE=$SYNCED_MODE"
 echo "ALIAS=$HOST"
@@ -441,3 +482,6 @@ if [ "$SYNCED_MODE" = git ]; then
   echo "BACKUP_BRANCH=$BACKUP_BRANCH"
 fi
 echo "BRIEF=$BRIEF"
+echo "PROJECT_NOTE=$NOTE"
+echo "PROJECT_NOTE_FILES=$NOTE_FILES"
+echo "PROJECT_NOTE_TRACKED=$NOTE_TRACKED"

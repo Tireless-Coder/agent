@@ -103,6 +103,13 @@ line:
 - `SYNC=ok MODE=git` → check `HEAD_SHA` matches the local probe; note
   `REMOTE_STASHED=yes` (report the stash to the user — the brief gets a
   "Parked remote changes" section automatically) and `BACKUP_BRANCH`.
+- `PROJECT_NOTE=written|updated` (with `PROJECT_NOTE_FILES=`) → the sync also
+  wrote the Tireless remote-exec stanza into this project's CLAUDE.md /
+  AGENTS.md, so future sessions here drive the workspace correctly without
+  being told. Mention it in one line. If `PROJECT_NOTE_TRACKED=yes`, say that
+  it is a git-tracked file and the stanza names this machine's ssh alias —
+  the user may not want it committed. `--no-project-note` opts out;
+  `tireless-project-note … --remove` takes it back out.
 - `SYNC=ok MODE=tar` → whole-tree snapshot: no `HEAD_SHA` check, no
   `DIRTY_APPLIED`/`UNTRACKED_SENT`/`REMOTE_STASHED` keys, and remote files
   were overwritten in place.
@@ -165,7 +172,9 @@ env files by name), where (`target-dir`), that the brief is at
 watch/steer it, and that the work comes back with one command later:
 `tireless-handoff-pull` (see below). The sync recorded a pending-handoff
 marker on this machine — future local sessions in this project are reminded
-automatically until the work is pulled back (or the record is `--forget`ed).
+automatically until the work is pulled back (or the record is `--forget`ed) —
+and wrote the workspace stanza into the project's CLAUDE.md (see
+`PROJECT_NOTE=` above).
 
 After a `MODE=tar` sync there is no git bring-back: the workspace copy is
 now the canonical one — say so, and suggest the remote agent `git init`

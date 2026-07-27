@@ -35,7 +35,7 @@ Then say: *"connect to my workspace"*.
 | `plugin/skills/marketplace` | Read-only marketplace browsing (renting stays on the dashboard), installable-tools catalog, installs with once-only revealed secrets, install status. |
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
 | `plugin/skills/continue` | "Continue this on my workspace": one-command git-over-ssh sync (branch + uncommitted work + env files), handoff brief at `~/.timeless/handoffs/`, autonomous tmux launch steerable from claude.ai. |
-| `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. |
+| `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. Includes the three self-repair commands: `session-heal.sh` (headless re-mint of an expired 8h Coder session), `ssh-clean.sh` (removes a dead stock-Coder block from `~/.ssh/config`), `project-note.sh` (writes the workspace stanza into a project's CLAUDE.md). |
 | `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (signature-verified against the pinned release key in `plugin/share/`, then hash-checked against the signed SHA256SUMS), then `exec tireless-connect mcp`. |
 | `install.sh` | Multi-client installer for Codex/Cursor (`--codex --cursor --skills-only --all`). Marker-delimited, never duplicates. |
 | `agents/AGENTS.snippet.md` | Compact AGENTS.md degradation of the skills. |
@@ -71,6 +71,13 @@ Then say: *"connect to my workspace"*.
   platform, then chains the per-region `tireless login <cpUrl>` in your own
   terminal. Tokens land 0600 in your user config dir under
   `tireless-connect/`.
+- **Re-auth is not re-onboarding**: cells cap Coder sessions at 8 hours with
+  no sliding refresh, so a laptop that slept always wakes up signed out of
+  its cell. `tireless-connect ensure-session` (and its script wrapper
+  `tireless-session-heal`) re-mints that session through the platform with no
+  browser, no tty and no paste, and exits 3 — distinct from 1 — in the one
+  case that genuinely needs you: a dead platform session. Agents are told to
+  do this silently and carry on rather than reporting a failure.
 - **Workspace creation is confirm-gated**: without `{"confirm": true}` the
   create tool only returns the plan/price card; skills forbid agents from
   passing `confirm: true` without your explicit, quoted yes.
@@ -100,9 +107,32 @@ itself keeps using its OAuth login; that stays the primary path for agents.
 - **Prompt-gated (your client asks)**: installers (`curl … | sh`), logins,
   `tireless config-ssh`, `tireless-clip setup`, the handoff mutations
   (`tireless-handoff-sync`, `tireless-handoff-launch` — they write to your
-  workspace and start an agent on it), and **every** `ssh` command.
-- **Tokens never transit the chat**: logins happen in your own terminal; the
-  skills instruct agents to never request, echo, or log tokens.
+  workspace and start an agent on it), the three self-repair commands
+  (`tireless-session-heal` mints a credential, `tireless-ssh-clean` edits
+  `~/.ssh/config`, `tireless-project-note` edits your project's CLAUDE.md),
+  and **every** `ssh` command. The pre-approved *shell* set stays pure reads
+  on purpose: an agent may probe without asking, never repair. One deliberate
+  exception lives on the MCP side — `tireless_doctor` re-mints an expired
+  per-cell Coder session as part of diagnosing it, because a routine 8-hour
+  expiry is not worth a prompt every morning. It is annotated
+  `readOnlyHint: false` so your client's permission layer knows.
+- **Self-repair is bounded and reversible**: `tireless-session-heal` never
+  opens a browser and never reads a tty (that is why it exists —
+  `tireless-connect login` can do both and would hang an agent's shell), it
+  bounds its slowest path at 90 s, and it re-probes the session itself rather
+  than trusting any tool's prose. The automatic heal inside the handoff
+  commands additionally fires at most once per run and sets a 2-minute
+  cooldown on failure, so a retry loop cannot hammer the mint route.
+  `tireless-ssh-clean` removes a stock-Coder block only when every
+  ProxyCommand inside it runs the Tireless CLI — a real Coder deployment's
+  block is reported and left alone — and always writes a timestamped 0600
+  backup first. `tireless-project-note` writes between markers, keeps its
+  backups outside your repo, and tells you when the file it touched is
+  git-tracked.
+- **Tokens never transit the chat**: first-time logins happen in your own
+  terminal; routine re-mints of expired per-cell Coder sessions run headlessly
+  through the platform (no browser, no paste); the skills instruct agents to
+  never request, echo, or log tokens.
 - **Binary supply chain is signature-gated**: `tireless-connect` downloads
   (plugin launcher and `install.sh`) only execute after the SHA256SUMS
   manifest verifies against the ECDSA release public key pinned in this repo

@@ -62,6 +62,30 @@ re-clones. Newer claude-code recipes bake a discovery note into the
 workspace `~/.claude/CLAUDE.md`; `tireless-handoff-sync` appends the same
 grep-guarded block on older workspaces.
 
+## The LOCAL project note
+
+The brief is for the agent that CONTINUES the work; the project note is for
+every session that comes after, on the laptop. Once a project's code lives on
+a workspace, each later local session needs the same short list of facts —
+the alias, the remote dir, that every ssh call is a fresh shell, tmux for
+long jobs, and how to bring the work back — and rediscovering them (or asking
+the user "shall I add a note to CLAUDE.md?" after every single sync) was pure
+ceremony with a foregone answer.
+
+So `tireless-handoff-sync` writes it itself, via `scripts/project-note.sh`:
+a marker-wrapped stanza (`<!-- >>> tireless workspace >>> -->`) in the
+project root's `CLAUDE.md`, plus `AGENTS.md` when that already exists. It is
+REPLACED between the markers on later syncs, never appended, so a changed
+alias or target dir updates instead of accumulating; the pre-change file is
+copied to `~/.timeless/handoffs/note-backups/` (outside the repo, so no
+untracked junk appears in `git status`); and `--no-project-note` opts out.
+The sync reports `PROJECT_NOTE=`, `PROJECT_NOTE_FILES=` and
+`PROJECT_NOTE_TRACKED=`. That last one matters: the stanza names a
+machine-specific ssh alias, so when the file is git-tracked the user should
+be told it is a commitable diff. A file whose begin marker has lost its end
+marker is left completely untouched (`NOTE=skipped`) rather than rewritten —
+hand-edited content is never worth guessing at.
+
 ## Brief template
 
 Schema `tireless-handoff/v1`. Cap ~150 lines. Remote paths only. No secrets
