@@ -34,15 +34,18 @@ input="$(cat 2>/dev/null || true)"
 # ~/work/tireless-agent gets told it "failed on auth".
 command="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 case "$command" in
-  *tireless*|*" ssh "*|ssh\ *) ;;
+  *tireless*) ;;
   *) exit 0 ;;
 esac
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/scripts"
+# Never let a half-installed plugin dir turn into a blocked tool call: under
+# dash an unreadable source exits 2, and PreToolUse exit 2 means "deny".
+[ -r "$SCRIPT_DIR/alias.sh" ] || exit 0
 . "$SCRIPT_DIR/alias.sh"
 
 say() {
-  _m="$(printf '%s' "$1" | tr '\n\r"\\' "  ''" | sed -e 's/  */ /g')"
+  _m="$(printf '%s' "$1" | tr '\n\r"\\' "  ''" | sed -e 's/[[:cntrl:]]/ /g' -e 's/  */ /g')"
   printf '{"hookSpecificOutput":{"hookEventName":"PostToolUseFailure","additionalContext":"%s"}}\n' "$_m"
 }
 
@@ -81,8 +84,11 @@ esac
 # mkdir, not test-then-touch: the read-then-write version let ten concurrent
 # failures all pass the gate (measured 10/10), which is ten heals racing for
 # the same rotation.
-COOL="$HOME/.timeless/heal-forced.d"
+# One token per BRANCH. Sharing them meant a "could not resolve" failure at T
+# silently disarmed the auth repair at T+1s — the original incident, rebuilt
+# inside the hook written to prevent it.
 forced_ok() {
+  COOL="$HOME/.timeless/heal-forced-$1.d"
   mkdir -p "$(dirname "$COOL")" 2>/dev/null || return 1
   if mkdir "$COOL" 2>/dev/null; then return 0; fi
   # Expire our own cooldown, never anyone else's lock: two minutes.
@@ -94,7 +100,7 @@ forced_ok() {
 }
 
 if [ "$route_shaped" = yes ] && [ "$auth_shaped" = no ]; then
-  forced_ok || exit 0
+  forced_ok route || exit 0
   out="$(sh "$SCRIPT_DIR/ssh-repair.sh" 2>&1)" || true
   case "$out" in
     SSHFIX=repaired*)
@@ -112,7 +118,7 @@ fi
 
 
 if [ "$auth_shaped" = yes ]; then
-  forced_ok || exit 0
+  forced_ok auth || exit 0
 elif tireless_warm_due && tireless_warm_mark; then
   :
 else

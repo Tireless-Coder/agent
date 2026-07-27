@@ -33,11 +33,14 @@ input="$(cat 2>/dev/null || true)"
 # made anywhere under a path containing "tireless".
 command="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 case "$command" in
-  *tireless*|*" ssh "*|ssh\ *) ;;
+  *tireless*) ;;
   *) exit 0 ;;
 esac
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/scripts"
+# Never let a half-installed plugin dir turn into a blocked tool call: under
+# dash an unreadable source exits 2, and PreToolUse exit 2 means "deny".
+[ -r "$SCRIPT_DIR/alias.sh" ] || exit 0
 . "$SCRIPT_DIR/alias.sh"
 
 tireless_warm_due || exit 0
@@ -55,7 +58,7 @@ out="$(sh "$SCRIPT_DIR/session-heal.sh" 2>&1)" || true
 say() {
   # One line, no double quotes, no backslashes — the cheapest way to stay valid
   # JSON without a serializer.
-  _m="$(printf '%s' "$1" | tr '\n\r"\\' "  ''" | sed -e 's/  */ /g')"
+  _m="$(printf '%s' "$1" | tr '\n\r"\\' "  ''" | sed -e 's/[[:cntrl:]]/ /g' -e 's/  */ /g')"
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$_m"
 }
 

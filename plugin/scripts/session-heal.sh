@@ -112,10 +112,14 @@ fi
 # A waiter does NOT mint. It waits for the holder, then re-probes: if the peer
 # succeeded, that is a healed session and saying so is both true and free.
 HEAL_LOCK="$HOME/.timeless/heal.lock"
+# Bounded by the SAME budget the caller gave the heal itself: a hook that is
+# killed at its timeout emits nothing at all, so waiting longer than the caller
+# can afford converts a working repair into silence.
+LOCK_WAIT="${TIRELESS_LOCK_WAIT:-${TIRELESS_HEAL_TIMEOUT:-40}}"
 mkdir -p "$HOME/.timeless" 2>/dev/null || true
 HELD_LOCK=no
 waited=0
-while [ "$waited" -lt 40 ]; do
+while [ "$waited" -lt "$LOCK_WAIT" ]; do
   if mkdir "$HEAL_LOCK" 2>/dev/null; then HELD_LOCK=yes; break; fi
   # A lock left behind by a killed heal must never wedge repairs shut.
   if [ -n "$(find "$HEAL_LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
@@ -136,9 +140,11 @@ else
       "re-run whatever failed — the session is live"
     exit 0
   fi
-  emit fail peer E_CODER_LOGIN \
-    "another heal has held the machine-wide lock for over 40s and the session is still not live" \
-    "wait for it to finish, then run the fix skill's doctor step"
+  # Not a failure of the repair — a peer is mid-repair. Saying `fail` here
+  # would tell the agent the re-mint failed while it is in fact succeeding.
+  emit action_required peer E_CODER_LOGIN \
+    "another heal on this machine is still running after ${LOCK_WAIT}s; nothing was minted here" \
+    "wait a few seconds and re-run the command — if it fails again, run the fix skill's doctor step"
   exit 1
 fi
 

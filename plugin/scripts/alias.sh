@@ -149,6 +149,20 @@ tireless_coder_dirs() {
   done
 }
 
+# tireless_coder_dirs_unique — one dir per REGION, connector root preferred.
+# Both state roots keep a dir per region (the platform installer creates its
+# own unconditionally and never logs into it), so anything iterating raw dirs
+# reports each region twice with contradictory verdicts — and any check that
+# compares a region against "the ProxyCommand ssh actually uses" declares the
+# losing root shadowed on a machine that works perfectly.
+tireless_coder_dirs_unique() {
+  tireless_coder_dirs | awk '
+    { n = $0; sub(/.*\//, "", n)
+      if (!(n in best) || index($0, "tireless-connect")) { best[n] = $0 }
+      if (!(n in seen)) { order[++c] = n; seen[n] = 1 } }
+    END { for (i = 1; i <= c; i++) print best[order[i]] }'
+}
+
 # tireless_session_expired — read-only: does ANY regional session report the
 # definitive `expired` verdict? Safe inside a pre-approved probe; it mints
 # nothing and writes nothing.

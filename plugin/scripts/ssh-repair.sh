@@ -98,7 +98,7 @@ scan() {
       broken) [ "$WORST" = shadowed ] || WORST=broken ;;
     esac
   done <<EOF
-$(tireless_coder_dirs)
+$(tireless_coder_dirs_unique)
 EOF
 }
 

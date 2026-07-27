@@ -100,18 +100,26 @@ if [ -n "$CLI_BIN" ]; then
     case "$verdict" in
       ok) r=1 ;;
       expired) r=2 ;;
-      missing) r=0 ;;   # no information, never a verdict on its own
+      missing)
+        # `missing` is only "no information" when nothing was ever established
+        # in that directory. A dir that HAS a session file the CLI rejects is a
+        # genuinely dead cell, and letting a live sibling outrank it is exactly
+        # the "one region masks another" bug this ranking exists to kill.
+        if [ -f "$d/session" ]; then r=2; else r=0; fi
+        ;;
       *) r=3 ;;
     esac
     if [ "$r" -gt "$rank" ]; then
       rank=$r
       case "$verdict" in
-        ok|expired) AUTH="$verdict" ;;
+        ok) AUTH=ok ;;
+        expired) AUTH=expired ;;
+        missing) AUTH=expired ;;   # a rejected session is a dead cell to heal
         *) AUTH=error ;;
       esac
     fi
   done <<EOF
-$(tireless_coder_dirs)
+$(tireless_coder_dirs_unique)
 EOF
   # Legacy single-region installs kept their session in the stock default dir.
   if [ "$SEEN_ANY" = no ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
