@@ -37,7 +37,9 @@ LOCK="$STATE_DIR/warm.lock"
 LOG="$STATE_DIR/warm.log"
 
 tireless_warm_due || exit 0
-tireless_warm_mark
+# No record written means no cooldown, and no cooldown means every session
+# start warms. Refuse rather than loop.
+tireless_warm_mark || exit 0
 
 # mkdir is the atomic test-and-set. A lock left behind by a killed heal must
 # not disable warming forever, so anything older than 10 minutes is reaped.

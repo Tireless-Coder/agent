@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TIRELESS_HEAL_TIMEOUT=35 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-tool-warm.sh",
+            "command": "TIRELESS_HEAL_TIMEOUT=20 TIRELESS_SSH_REPAIR_TIMEOUT=25 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-tool-warm.sh",
             "timeout": 55
           }
         ]
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TIRELESS_HEAL_TIMEOUT=35 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-tool-heal.sh",
+            "command": "TIRELESS_HEAL_TIMEOUT=20 TIRELESS_SSH_REPAIR_TIMEOUT=25 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-tool-heal.sh",
             "timeout": 55
           }
         ]

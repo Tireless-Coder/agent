@@ -269,13 +269,22 @@ EOF
 
 # tireless_warm_mark — record what we are about to attempt. Truncates: the file
 # describes THIS attempt, and its own mtime is the attempt time.
+# Returns non-zero when the record could NOT be written. Callers must treat
+# that as "do not warm": without a record, tireless_warm_due answers "due" on
+# every single call, so a HOME that cannot hold the marker (read-only, full, a
+# regular file where the directory should be) turns the pre-tool hook into a
+# synchronous re-mint before every matching Bash command — a self-inflicted
+# 429 against a route rate-limited to 10/min, plus an ssh-config rewrite each
+# time. Every other guard in this change fails closed; this one used to be the
+# exception.
 tireless_warm_mark() {
-  mkdir -p "$(dirname "$TIRELESS_WARM_TRIED")" 2>/dev/null || return 0
-  : >"$TIRELESS_WARM_TRIED" 2>/dev/null || return 0
+  mkdir -p "$(dirname "$TIRELESS_WARM_TRIED")" 2>/dev/null || return 1
+  : >"$TIRELESS_WARM_TRIED" 2>/dev/null || return 1
   tireless_stale_session_files | while IFS= read -r _f; do
     [ -n "$_f" ] || continue
     printf '%s|%s\n' "$(tireless_mtime "$_f")" "$_f" >>"$TIRELESS_WARM_TRIED"
   done
+  [ -s "$TIRELESS_WARM_TRIED" ]
 }
 
 # tireless_resolve_alias <workspace-or-alias> — echo an ssh alias that

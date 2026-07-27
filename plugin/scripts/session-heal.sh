@@ -185,8 +185,15 @@ LOGIN_TIMEOUT="${TIRELESS_HEAL_TIMEOUT:-90}"
 # of only three loopback OAuth ports (127.0.0.1:52180-52182) for up to five
 # minutes — enough orphans and a real interactive login fails for want of a
 # port. Observed live on 2026-07-27.
+# Kill the process GROUP. `kill $pid` reaps only the tracked child; its own
+# children survive with PPID 1 — in production that grandchild is
+# `tireless config-ssh`, which goes on to rewrite ~/.ssh/config minutes after
+# this script has already reported failure. `set -m` around the launch puts the
+# child in its own group so the negative-pid kill can reach all of it.
 cleanup_login() {
-  if [ -n "${lpid:-}" ] && kill -0 "$lpid" 2>/dev/null; then kill "$lpid" 2>/dev/null || true; fi
+  if [ -n "${lpid:-}" ] && kill -0 "$lpid" 2>/dev/null; then
+    kill -TERM -- "-$lpid" 2>/dev/null || kill -TERM "$lpid" 2>/dev/null || true
+  fi
   if [ -n "${lout:-}" ]; then rm -f "$lout"; fi
 }
 LOGIN_MARKER='open this URL to sign in'
@@ -194,8 +201,10 @@ LOGIN_MARKER='open this URL to sign in'
 heal_via_login() {
   lout="$(mktemp "${TMPDIR:-/tmp}/tireless-login.XXXXXX")"
   trap 'cleanup_login; rmdir "$HEAL_LOCK" 2>/dev/null || true' EXIT INT TERM
+  set -m 2>/dev/null || true
   "$CONNECT" login --no-browser </dev/null >"$lout" 2>&1 &
   lpid=$!
+  set +m 2>/dev/null || true
   waited=0
   needs_human=no
   while [ "$waited" -lt "$LOGIN_TIMEOUT" ]; do
@@ -206,7 +215,7 @@ heal_via_login() {
   done
   timedout=no
   if kill -0 "$lpid" 2>/dev/null; then
-    kill "$lpid" 2>/dev/null || true
+    kill -TERM -- "-$lpid" 2>/dev/null || kill -TERM "$lpid" 2>/dev/null || true
     if [ "$needs_human" = no ]; then timedout=yes; fi
   fi
   wait "$lpid" 2>/dev/null || true

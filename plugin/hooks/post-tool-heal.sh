@@ -78,12 +78,19 @@ esac
 # warming hooks is keyed to the clock, and this path deliberately ignores the
 # clock. Two minutes is enough that a command retried in a loop cannot turn
 # into a mint loop, and short enough to be invisible to a human.
-COOL="$HOME/.timeless/heal-forced"
+# mkdir, not test-then-touch: the read-then-write version let ten concurrent
+# failures all pass the gate (measured 10/10), which is ten heals racing for
+# the same rotation.
+COOL="$HOME/.timeless/heal-forced.d"
 forced_ok() {
-  [ -f "$COOL" ] && [ -n "$(find "$COOL" -mmin -2 2>/dev/null)" ] && return 1
   mkdir -p "$(dirname "$COOL")" 2>/dev/null || return 1
-  : >"$COOL" 2>/dev/null || return 1
-  return 0
+  if mkdir "$COOL" 2>/dev/null; then return 0; fi
+  # Expire our own cooldown, never anyone else's lock: two minutes.
+  if [ -n "$(find "$COOL" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
+    rmdir "$COOL" 2>/dev/null || true
+    mkdir "$COOL" 2>/dev/null && return 0
+  fi
+  return 1
 }
 
 if [ "$route_shaped" = yes ] && [ "$auth_shaped" = no ]; then
@@ -106,8 +113,8 @@ fi
 
 if [ "$auth_shaped" = yes ]; then
   forced_ok || exit 0
-elif tireless_warm_due; then
-  tireless_warm_mark
+elif tireless_warm_due && tireless_warm_mark; then
+  :
 else
   exit 0
 fi

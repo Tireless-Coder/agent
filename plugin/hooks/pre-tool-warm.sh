@@ -41,7 +41,7 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/scripts"
 . "$SCRIPT_DIR/alias.sh"
 
 tireless_warm_due || exit 0
-tireless_warm_mark
+tireless_warm_mark || exit 0
 
 out="$(sh "$SCRIPT_DIR/session-heal.sh" 2>&1)" || true
 
