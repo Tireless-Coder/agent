@@ -172,7 +172,29 @@ if [ "$DO_CODEX" = 1 ]; then
   mkdir -p "$HOME/.codex"
   agents_md="$HOME/.codex/AGENTS.md"
   if grep -qsF "$MARK_BEGIN" "$agents_md"; then
-    echo "[ok] ~/.codex/AGENTS.md already has the tireless block"
+    # REPLACE it, never skip it. Skipping froze every existing Codex user's
+    # guidance at whatever release they first installed: this machine's block
+    # predated even the 8h-expiry rule, so the one instruction that would have
+    # prevented the 2026-07-27 misdiagnosis was shipped in the skills and never
+    # reached the file Codex actually reads every turn. Re-running the
+    # installer is the only update path those users have, so it has to update.
+    #
+    # The block is ours between the markers; everything outside is the user's
+    # and is preserved byte for byte. Written to a temp file and moved into
+    # place so an interrupted run cannot truncate their AGENTS.md.
+    tmp_agents="$(mktemp "${TMPDIR:-/tmp}/tireless-agents.XXXXXX")"
+    awk -v begin="$MARK_BEGIN" -v end="$MARK_END" -v snippet="$SRC/agents/AGENTS.snippet.md" '
+      $0 == begin { print; while ((getline line < snippet) > 0) print line; close(snippet); skip = 1; next }
+      $0 == end { skip = 0; print; next }
+      skip != 1 { print }
+    ' "$agents_md" >"$tmp_agents"
+    if [ -s "$tmp_agents" ] && grep -qsF "$MARK_END" "$tmp_agents"; then
+      cat "$tmp_agents" >"$agents_md"
+      echo "[ok] refreshed the tireless block in ~/.codex/AGENTS.md"
+    else
+      echo "[!]  left ~/.codex/AGENTS.md untouched (its tireless block looks malformed — fix the markers by hand)"
+    fi
+    rm -f "$tmp_agents"
   else
     # Blank-line separator only when appending to existing content; the size
     # test happens before the redirection opens the file for append.
