@@ -6,9 +6,9 @@
 #
 #   CLI=ok|missing         tireless CLI (rebranded Coder CLI) found
 #   AUTH=ok|expired|error|missing
-#                          a REGIONAL Coder session answers `list` (the only
-#                          sessions the ssh configs actually use; the legacy
-#                          default-dir probe is the last resort).
+#                          the WORST verdict across regional Coder sessions
+#                          (the only sessions the ssh configs actually use; the
+#                          legacy default-dir probe is the last resort).
 #                          expired = sessions were established here before and
 #                          simply aged out (cells cap them at 8h, so this is
 #                          the normal overnight state) — `tireless-session-heal`
@@ -16,6 +16,10 @@
 #                          error   = the probe failed for a NON-auth reason
 #                          (network, edge block, CLI crash) — do not heal.
 #                          missing = nothing was ever set up on this machine.
+#   AUTH_REGIONS=<region>:<verdict>,…|none
+#                          the same verdict per cell, so a multi-cell account
+#                          can see WHICH one is out instead of one rolled-up
+#                          word
 #   SSHCFG=ok|missing      a managed Include block (installer TIRELESS-CELLS
 #                          or tireless-connect markers) is in ~/.ssh/config
 #                          AND at least one regional fragment file exists
@@ -69,31 +73,47 @@ if [ -n "$CLI_BIN" ]; then echo "CLI=ok"; else echo "CLI=missing"; fi
 # `missing` is what made a routine overnight expiry look like a broken
 # install. `error` (network/edge/CLI) is kept separate too — healing into an
 # outage is the wrong move.
+# AUTH is the WORST verdict across regions, never the best. It used to be the
+# best: any one region answering `ok` printed AUTH=ok, so a two-cell user whose
+# us-east session had died read a clean bill of health while every
+# `ssh ws.us-east.tireless` kept failing — and the fix skill's step 2, which
+# would have healed it, was never reached. Per-region detail rides alongside in
+# AUTH_REGIONS so a caller can tell WHICH cell is out.
+#
+# Severity order (highest wins): ok < expired < missing < error. expired is
+# routine and self-healing, missing is onboarding for that cell, error means a
+# network/edge problem where healing is the wrong move entirely.
 AUTH=missing
-SEEN_EXPIRED=no
-SEEN_ERROR=no
+AUTH_REGIONS=""
 SEEN_ANY=no
 if [ -n "$CLI_BIN" ]; then
+  rank=0
   while IFS= read -r d; do
     [ -n "$d" ] || continue
     SEEN_ANY=yes
-    case "$(tireless_session_probe "$d")" in
-      ok) AUTH=ok ;;
-      expired) SEEN_EXPIRED=yes ;;
-      error) SEEN_ERROR=yes ;;
+    verdict="$(tireless_session_probe "$d")"
+    AUTH_REGIONS="${AUTH_REGIONS:+$AUTH_REGIONS,}$(basename "$d"):$verdict"
+    case "$verdict" in
+      ok) r=0 ;;
+      expired) r=1 ;;
+      missing) r=2 ;;
+      *) r=3 ;;
     esac
+    if [ "$r" -ge "$rank" ]; then
+      rank=$r
+      case "$verdict" in
+        ok|expired|missing) AUTH="$verdict" ;;
+        *) AUTH=error ;;
+      esac
+    fi
   done <<EOF
 $(tireless_coder_dirs)
 EOF
   # Legacy single-region installs kept their session in the stock default dir.
-  if [ "$AUTH" != ok ] && [ "$SEEN_ANY" = no ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
-  if [ "$AUTH" != ok ]; then
-    if [ "$SEEN_EXPIRED" = yes ]; then AUTH=expired
-    elif [ "$SEEN_ERROR" = yes ]; then AUTH=error
-    fi
-  fi
+  if [ "$SEEN_ANY" = no ] && "$CLI_BIN" list >/dev/null 2>&1; then AUTH=ok; fi
 fi
 echo "AUTH=$AUTH"
+echo "AUTH_REGIONS=${AUTH_REGIONS:-none}"
 
 # Both supported setups write a marker-wrapped Include in ~/.ssh/config and
 # per-region fragments elsewhere — the Host lines are in the FRAGMENTS, so

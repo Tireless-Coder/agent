@@ -1,6 +1,6 @@
 ---
 name: fix
-description: Diagnose and repair a broken Tireless connection. Use when ssh <workspace>.tireless fails or hangs, the tireless CLI errors or reports unauthenticated/401, tireless_* MCP tools return errors, clipboard paste into agents on the workspace stops working, or the user says their Tireless workspace, connection, or paste is broken. Walks a deterministic doctor decision tree; every dead end produces a copy-paste support summary.
+description: Diagnose and repair a broken Tireless connection. Use when ssh <workspace>.tireless fails or hangs, the tireless CLI errors or reports unauthenticated/401, anything says "session has expired" / "You are signed out" / "not logged in" / "no live Coder session", coder whoami or tireless list fails, a workspace that worked yesterday stopped answering today, tireless_* MCP tools return errors or report signed_in while ssh still fails, clipboard paste into agents on the workspace stops working, or the user says their Tireless workspace, connection, or paste is broken. Walks a deterministic doctor decision tree; every dead end produces a copy-paste support summary.
 allowed-tools: Bash(tireless-preflight*), Bash(tireless-verify*), Bash(tireless-clip-doctor*), Bash(tireless list*), Bash(tireless ping*), Bash(tireless version*), Bash(tireless-clip status*)
 ---
 
@@ -12,7 +12,41 @@ tokens never in chat, platform sign-ins (browser) belong in the user's own
 terminal, no lifecycle mutations via CLI or Coder API. A routine per-cell
 Coder session re-mint is NOT an interactive login — see `E_CODER_LOGIN`.
 
+## Read this before you diagnose anything: there are TWO auth layers
+
+| | platform session | per-cell Coder session |
+|---|---|---|
+| what it is | your Tireless account bearer token | the credential `ssh <ws>.tireless` and the `tireless` CLI travel on |
+| lives | ~1 hour | 8h, hard cap, **no** sliding refresh |
+| repairs itself? | **yes** — the connector refreshes it silently | **no** — it must be re-minted |
+| reported by | `tireless_status` → `signed_in`, `token_expires_at` | `tireless_status` → `workspace_sessions`, `ssh_ready` (newer connectors only) |
+| repaired by | `tireless_login` / `tireless-connect login` | `tireless-session-heal` |
+
+Consequences, all of them counter-intuitive, all of them observed in a real
+session on 2026-07-27:
+
+- **`signed_in: true` does not mean ssh works.** It describes the platform
+  layer only. On a connector that predates `workspace_sessions`, status says
+  *nothing at all* about the layer that is actually broken.
+- **`token_expires_at` in the past is normal.** That token is ~1h and refreshes
+  itself. It is almost never your problem, and "the token expired 2 hours ago"
+  is not a finding.
+- **`tireless_login` reporting "already signed in" is not a repair.** On older
+  connectors it only ever touched the platform layer, so it can report success
+  while ssh stays dead. (Newer builds heal both and say so under
+  `workspace_sessions`.)
+- **The tell** is any of: `session has expired` / `You are signed out` from
+  `tireless` or `coder`, `AUTH=expired`, `CAUSE=session_expired`,
+  `E_CODER_LOGIN`, or ssh failing on auth while the dashboard works fine.
+  Response: run `tireless-session-heal`. Do not investigate the platform token.
+
 ## Step 1 — diagnose
+
+**Shortcut, and take it**: if the symptom is any of the auth-expiry tells
+above, run `tireless-session-heal` FIRST and skip the tree. It is one command,
+it is bounded, it prints its own verdict, and on `SESSION=ok` you have also
+learned that auth was never the problem — which is a diagnosis, not a wasted
+step. Running doctor first costs a round trip to reach the same instruction.
 
 **Preferred**: call the `tireless_doctor` MCP tool. It returns
 `{"checks": [{"id", "ok", "code", "detail", "fix"}], "summary"}` — walk the
@@ -69,7 +103,7 @@ and `sh ~/.agents/skills/tireless/scripts/ssh-clean.sh`.
 | `E_EDGE_BLOCK` | the platform's edge (Cloudflare bot protection) is blocking API traffic | This is NOT a login problem — do NOT loop `tireless-connect login` (unlike E_TOKEN_INVALID, the request never reaches auth). No client-side fix exists: the platform operator must exempt `/api/*` from bot protection. Tell the user exactly that and emit the support summary. |
 | `E_TOKEN_INVALID` | platform bearer token rejected | User runs `tireless-connect login` in their OWN terminal, replies "done"; re-run doctor. |
 | `E_TOKEN_EXPIRED` | token expired and refresh failed | Same fix as E_TOKEN_INVALID. |
-| `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | Routine expiry (cells cap sessions at 8h — expect this overnight), NOT a re-onboarding. Run `tireless-session-heal` (or, with MCP, call `tireless_doctor` — it re-mints as part of diagnosing). Both are headless: server-minted, no browser, no paste, no token in chat. Never run `tireless-connect login` from your own Bash tool as the heal: when the platform token is ALSO dead it opens a browser and blocks on the loopback callback, which hangs your session. Only when the heal reports `SESSION=action_required` does the user run `tireless-connect login` in their OWN terminal and reply "done". Then re-run doctor. |
+| `E_CODER_LOGIN` | Coder CLI session missing/expired for a cell | Routine expiry (cells cap sessions at 8h — expect this overnight), NOT a re-onboarding. Run **`tireless-session-heal`** — headless: server-minted, no browser, no paste, no token in chat. It is the only entrypoint that heals on every connector build; `tireless_doctor` self-heals only on connectors newer than 0.4.2, so treat doctor as DIAGNOSIS and session-heal as REPAIR. Never run `tireless-connect login` from your own Bash tool as the heal: when the platform token is ALSO dead it opens a browser and blocks on the loopback callback, which hangs your session — `tireless-session-heal` wraps that same command with `--no-browser`, no tty and a watchdog, which is why it is safe and a bare call is not. Only when the heal reports `SESSION=action_required` does the user sign in themselves (its `NEXT=` line carries the URL). Then re-run doctor. |
 | `E_SSH_BLOCK` | managed ssh block missing | `tireless-connect setup` (writes the marker-wrapped Include + regional fragments — the worlds preflight actually checks). Never bare `tireless config-ssh --yes`: it targets the stock coderv2 world and writes a block nothing uses. |
 | `E_SSH_STALE` / `SSHCFG_STALE=yes` | leftover stock-Coder block in `~/.ssh/config` from an old `tireless config-ssh` run | Only when `SSHCFG_STALE_OURS=yes`: run `tireless-ssh-clean` — it backs the file up (0600, timestamped) and removes only blocks whose every ProxyCommand runs the Tireless CLI. `SSHCFG_STALE_OURS=no` means the block may belong to a real Coder deployment the user runs: report it, never touch it. Preview with `tireless-ssh-clean --dry-run`. Never a blocker — it routes nothing either way. |
 | `E_CLIP_INCLUDE` | clip include markers missing from ~/.ssh/config | `tireless-clip setup` |

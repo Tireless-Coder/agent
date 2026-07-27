@@ -130,6 +130,12 @@ on the local files.
   then poll the log. Cap every remote output with \`| tail -100\`.
 - Read/Grep/Glob see only LOCAL files. Read remote files over ssh
   (\`sed -n 1,120p <path>\`) instead of copying the tree down.
+- If ssh fails on AUTH (\`session has expired\`, \`You are signed out\`,
+  \`not logged in\`): that is the per-cell Coder session aging out — cells cap
+  it at 8h, so expect it daily. Run \`tireless-session-heal\` and retry the
+  command. Headless: no browser, no paste, no user action. It is NOT the
+  platform sign-in, so \`tireless_status\` saying signed_in and
+  \`tireless_login\` saying "already signed in" prove nothing here.
 - Send newer local work up with \`tireless-handoff-sync\`; bring the
   workspace's work back with \`tireless-handoff-check\` then
   \`tireless-handoff-pull\`. Don't edit both sides at once.

@@ -35,7 +35,8 @@ Then say: *"connect to my workspace"*.
 | `plugin/skills/marketplace` | Read-only marketplace browsing (renting stays on the dashboard), installable-tools catalog, installs with once-only revealed secrets, install status. |
 | `plugin/skills/clipboard` | Ctrl+V paste bridge verification and repair, drop-box fallback. |
 | `plugin/skills/continue` | "Continue this on my workspace": one-command git-over-ssh sync (branch + uncommitted work + env files), handoff brief at `~/.timeless/handoffs/`, autonomous tmux launch steerable from claude.ai. |
-| `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. Includes the three self-repair commands: `session-heal.sh` (headless re-mint of an expired 8h Coder session), `ssh-clean.sh` (removes a dead stock-Coder block from `~/.ssh/config`), `project-note.sh` (writes the workspace stanza into a project's CLAUDE.md). |
+| `plugin/scripts/` | Deterministic POSIX probes emitting `KEY=val` lines — agents branch on strings, not shell noise. Includes the self-repair commands: `session-heal.sh` (headless re-mint of an expired 8h Coder session), `session-warm.sh` (re-mints it *before* it expires), `ssh-clean.sh` (removes a dead stock-Coder block from `~/.ssh/config`), `project-note.sh` (writes the workspace stanza into a project's CLAUDE.md). |
+| `plugin/hooks/` | `pending-handoff.sh` (SessionStart: warn about unpulled workspace work), `session-warm.sh` (SessionStart: renew a session older than 7h, detached), `pre-tool-warm.sh` (PreToolUse/Bash: renew it synchronously right before the command that would have failed on it), `post-tool-heal.sh` (PostToolUseFailure/Bash: when a command fails on auth, re-mint and tell the agent to retry — the catch-all for expiry the clock cannot predict). |
 | `plugin/bin/launch-mcp.sh` | Claude MCP launcher: finds/downloads `tireless-connect` into `${CLAUDE_PLUGIN_DATA}/bin` (signature-verified against the pinned release key in `plugin/share/`, then hash-checked against the signed SHA256SUMS), then `exec tireless-connect mcp`. |
 | `install.sh` | Multi-client installer for Codex/Cursor (`--codex --cursor --skills-only --all`). Marker-delimited, never duplicates. |
 | `agents/AGENTS.snippet.md` | Compact AGENTS.md degradation of the skills. |
@@ -111,11 +112,48 @@ itself keeps using its OAuth login; that stays the primary path for agents.
   (`tireless-session-heal` mints a credential, `tireless-ssh-clean` edits
   `~/.ssh/config`, `tireless-project-note` edits your project's CLAUDE.md),
   and **every** `ssh` command. The pre-approved *shell* set stays pure reads
-  on purpose: an agent may probe without asking, never repair. One deliberate
-  exception lives on the MCP side — `tireless_doctor` re-mints an expired
-  per-cell Coder session as part of diagnosing it, because a routine 8-hour
-  expiry is not worth a prompt every morning. It is annotated
-  `readOnlyHint: false` so your client's permission layer knows.
+  on purpose: an agent may probe without asking, never repair.
+- **Two deliberate exceptions to that, and they are worth stating plainly.**
+  The session-warming hooks run `session-heal.sh` *without* a prompt, because
+  hooks are not subject to the permission system — so a routine 8h re-mint
+  happens unattended. What that costs you: one call to the platform's mint
+  route for your own account, a 0600 session file rewritten, and the regional
+  ssh fragments regenerated (a side effect of the `login` path on connector
+  0.4.2). What it never does: open a browser, read a tty, touch a workspace,
+  or put a token anywhere but your own 0600 files. It fires at most once per
+  expiry — about once a day — and only when a session file is already over 7
+  hours old. Set `TIRELESS_NO_AUTOHEAL=1` to disable both hooks; the
+  prompt-gated `tireless-session-heal` still works by hand.
+- One more exception lives on the MCP side — on connectors newer than 0.4.2,
+  `tireless_doctor` re-mints an expired per-cell Coder session as part of
+  diagnosing it, because a routine 8-hour expiry is not worth a prompt every
+  morning. It is annotated `readOnlyHint: false` so your client's permission
+  layer knows. On 0.4.2 (the build most machines still run) doctor only
+  DIAGNOSES: `tireless-session-heal` is the repair that works everywhere, and
+  it is the one the skills name.
+- **The 8h session is kept alive, not just repaired**: cells cap the per-cell
+  Coder session at 8 hours with no sliding refresh, so it dies about once a
+  day — and the call it breaks is the agent's own
+  `ssh <workspace>.tireless …`, which runs through the client's Bash tool and
+  touches none of this plugin's code. Waiting for that failure and then
+  explaining it is the worst version of this. So the session is renewed at the
+  7h mark instead: at session start (detached, so nothing waits) and again
+  immediately before any Bash command that mentions Tireless (synchronous —
+  ~2 s, once per expiry, so the command then works). Both are stat-cheap when
+  there is nothing to do: the session file's mtime is the mint time, so the
+  common case costs one `stat` per region and no network. And because not
+  every death is predictable — a revoked token, an account switch, a wrong
+  clock — a third hook catches any Tireless command that *does* fail on auth,
+  re-mints, and tells the agent to retry, so the failure costs one command
+  rather than a diagnosis. `TIRELESS_NO_AUTOHEAL=1` turns all three off.
+- **Two auth layers, and only one of them expires like this**: the platform
+  sign-in (`tireless_status` → `signed_in`) lasts about an hour and refreshes
+  itself; the per-cell Coder session is what ssh actually travels on and
+  nothing refreshes it. `signed_in: true` therefore does not mean ssh works,
+  and a `token_expires_at` in the past is normal rather than a finding. The
+  skills, the AGENTS snippet and the per-project stanza all say this, because
+  an agent that conflates the two spends its next three tool calls repairing
+  the layer that was never broken.
 - **Self-repair is bounded and reversible**: `tireless-session-heal` never
   opens a browser and never reads a tty (that is why it exists —
   `tireless-connect login` can do both and would hang an agent's shell), it

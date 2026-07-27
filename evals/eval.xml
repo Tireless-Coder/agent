@@ -91,4 +91,44 @@
     <question>tireless-handoff-sync finishes with PROJECT_NOTE=written and PROJECT_NOTE_TRACKED=yes. What is the one thing you must tell the user about that, beyond the fact that the note was written?</question>
     <answer>The file it wrote to is tracked by git, so the stanza — which names this machine's specific ssh alias and a workspace-only path — shows up as a commitable diff and could be pushed to teammates; they may want to drop or ignore it.</answer>
   </qa_pair>
+  <qa_pair>
+    <question>Mid-task, `ssh myws.eu-central.tireless 'pnpm test'` fails. You call tireless_status and it returns signed_in: true with a token_expires_at two hours in the past. Is the platform token expiry the reason ssh failed? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>ssh to a Tireless workspace fails on auth. You call tireless_login and it returns status ok with the message "already signed in as user@example.com", and it says nothing about workspace_sessions. Is that sufficient evidence that ssh will now work? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An ssh command to a Tireless workspace just failed with "You are signed out or your session has expired." Name the ONE command you run to repair it yourself, before asking the user for anything and before running any other diagnosis.</question>
+    <answer>tireless-session-heal</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Your Bash tool is available and the per-cell Coder session has expired. May you run `tireless-connect login` directly from your own Bash tool to re-mint it? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-session-heal returns SESSION=ok (not healed). The ssh command that triggered it is still failing. Was the per-cell Coder session the cause of that failure? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-preflight prints AUTH=error for a Tireless connection. Should you run tireless-session-heal to re-mint the session? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-session-heal returns SESSION=action_required. Who performs the next step — you, or the user? Answer with one word.</question>
+    <answer>user</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>tireless-preflight prints AUTH=expired and AUTH_REGIONS=eu-central:ok,us-east:expired. Which region's workspaces will fail to answer ssh? Answer with the region id only.</question>
+    <answer>us-east</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Your ssh command to a Tireless workspace failed, and the tool result carries a note that the per-cell Coder session had expired and has just been re-minted headlessly. What is your next action? Answer with one short sentence.</question>
+    <answer>Retry the same command.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An ssh command to a Tireless workspace failed and a hook reports that the per-cell Coder session is live, so auth is not the cause. Should you run tireless-session-heal? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
 </evaluation>

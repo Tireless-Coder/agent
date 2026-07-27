@@ -108,8 +108,14 @@ tireless_cli_bin() {
 # NEVER be treated as expiry: minting into an outage just hammers the platform
 # and mislabels the failure.
 #
-# The two literal strings are the Coder CLI's own messages, verified against
-# the shipped binary (v2.34.5) on 2026-07-27.
+# The literal strings below are matched against the CLI's stderr, live-verified
+# on 2026-07-27 ("You are signed out or your session has expired."). Note where
+# they come from: `session has expired` is NOT in the client binary — coderd
+# emits it and the CLI relays it, so a control-plane upgrade can reword it. The
+# blast radius of that is real: every heal gate in this plugin keys off these
+# strings, and a reworded message downgrades expiry to `error`, which is the
+# one verdict that deliberately does NOT heal. If self-healing ever goes quiet
+# fleet-wide, check these strings against a live expiry first.
 #
 # Bounded: the probe runs inside pre-approved, read-only commands
 # (`tireless-preflight`, `tireless-verify`) whose whole promise is that they
@@ -125,7 +131,7 @@ tireless_session_probe() {
     printf 'ok\n'
   elif grep -qs 'session has expired' "$_err"; then
     printf 'expired\n'
-  elif grep -qs 'not logged in' "$_err"; then
+  elif grep -qs 'not logged in' "$_err" || grep -qs 'no longer logged in' "$_err"; then
     printf 'missing\n'
   else
     printf 'error\n'
@@ -199,6 +205,77 @@ tireless_heal_once() {
   mkdir -p "$HOME/.timeless" 2>/dev/null || true
   : >"$_cool" 2>/dev/null || true
   return 1
+}
+
+# ── proactive warming ───────────────────────────────────────────────────────
+#
+# A session file is written once per mint (0600, temp+rename), so its mtime IS
+# the mint time. That makes "will this session die soon?" answerable with a
+# stat — no CLI, no network, no token read — which is the only reason it is
+# affordable to ask before every remote command.
+
+TIRELESS_WARM_STALE_MINUTES="${TIRELESS_SESSION_STALE_MINUTES:-420}"
+TIRELESS_WARM_TRIED="$HOME/.timeless/warm-tried"
+
+# mtime in epoch seconds, portable across BSD (macOS) and GNU stat.
+tireless_mtime() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || printf '0\n'
+}
+
+# tireless_stale_session_files — session files minted longer ago than the
+# threshold, one path per line. Empty output is the overwhelmingly common case
+# and costs one stat per region.
+tireless_stale_session_files() {
+  while IFS= read -r _d; do
+    [ -n "$_d" ] || continue
+    _f="$_d/session"
+    [ -f "$_f" ] || continue
+    if [ -n "$(find "$_f" -mmin "+$TIRELESS_WARM_STALE_MINUTES" 2>/dev/null)" ]; then
+      printf '%s\n' "$_f"
+    fi
+  done <<EOF
+$(tireless_coder_dirs)
+EOF
+}
+
+# tireless_warm_due — 0 when a re-mint is worth attempting right now.
+#
+# Staleness alone is NOT enough, because a stale file is not always a fixable
+# one: a region the account no longer has leaves its directory behind forever,
+# and neither `login` nor `ensure-session` will ever mint for it (they only
+# touch regions the platform currently lists). Warming on staleness alone
+# therefore re-fires on every single session start, for good — an unattended
+# mint attempt and an ssh-config rewrite each time, against a route that is
+# rate-limited to 10/minute.
+#
+# So the guard is the (file, mint-time) pair: an attempt is made at most once
+# per distinct pair, and the whole record ages out after an hour so a mint that
+# failed on a network blip is retried rather than abandoned. A dir that can
+# never heal is attempted once an hour at worst instead of every launch.
+tireless_warm_due() {
+  _stale="$(tireless_stale_session_files)"
+  [ -n "$_stale" ] || return 1
+  if [ -f "$TIRELESS_WARM_TRIED" ] && [ -n "$(find "$TIRELESS_WARM_TRIED" -mmin -60 2>/dev/null)" ]; then
+    while IFS= read -r _f; do
+      [ -n "$_f" ] || continue
+      grep -qxF "$(tireless_mtime "$_f")|$_f" "$TIRELESS_WARM_TRIED" || return 0
+    done <<EOF
+$_stale
+EOF
+    return 1
+  fi
+  return 0
+}
+
+# tireless_warm_mark — record what we are about to attempt. Truncates: the file
+# describes THIS attempt, and its own mtime is the attempt time.
+tireless_warm_mark() {
+  mkdir -p "$(dirname "$TIRELESS_WARM_TRIED")" 2>/dev/null || return 0
+  : >"$TIRELESS_WARM_TRIED" 2>/dev/null || return 0
+  tireless_stale_session_files | while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
+    printf '%s|%s\n' "$(tireless_mtime "$_f")" "$_f" >>"$TIRELESS_WARM_TRIED"
+  done
 }
 
 # tireless_resolve_alias <workspace-or-alias> — echo an ssh alias that

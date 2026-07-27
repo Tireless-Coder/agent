@@ -97,7 +97,7 @@ else
   CAUSE=unknown
   if grep -qs 'session has expired' "$err_file"; then
     CAUSE=session_expired
-  elif grep -qs 'not logged in' "$err_file"; then
+  elif grep -qs 'not logged in' "$err_file" || grep -qs 'no longer logged in' "$err_file"; then
     CAUSE=no_session
   fi
   echo "CAUSE=$CAUSE"

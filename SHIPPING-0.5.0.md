@@ -15,12 +15,19 @@
 > (`e7379e8`) — see §1a for why. Publishing needs the offline release signing
 > key, which is yours alone.
 >
-> **Nothing is broken meanwhile.** The plugin's skills reach the fast
-> `ensure-session` path only on a 0.5.0 binary and fall back to
-> `tireless-connect doctor` otherwise, which already re-mints sessions on
-> 0.4.3+. On a 0.4.2 binary `tireless-session-heal` correctly reports
-> `SESSION=action_required` and tells the user to update the connector —
-> honest, not silently broken.
+> **CORRECTION 2026-07-27 (evening), and the reason plugin 0.6.0 exists.**
+> The paragraph that used to sit here said the 0.4.2 fallback was "honest, not
+> silently broken". It was honest and it was also useless: the fallback ran
+> `tireless-connect doctor`, which only re-mints on 0.4.3+ — a version that
+> was never published. So on every binary in the field the documented repair
+> ended at `SESSION=action_required` telling the user to update to a connector
+> that does not exist. There WAS a working headless heal on 0.4.2 the whole
+> time: `login`'s phase 2 does the same server-side mint, and skips its
+> browser phase whenever the platform token is live or refreshable — which is
+> the normal case, because that layer refreshes itself and the cell session
+> does not. Plugin 0.6.0 uses it, under `--no-browser` + no tty + a watchdog.
+> Live-verified on 2026-07-27 against the 0.4.2 binary: dead session → 2.1 s →
+> live, no browser, no user action.
 
 ## 1a. Why the connector cannot ride an ordinary commit
 
@@ -209,3 +216,67 @@ of diagnosing, so claiming otherwise misled the host's permission layer.
 - There is still no CI. A `shellcheck -s sh` job plus a guard asserting
   `RELEASE_COMMIT` is an ancestor of HEAD *and* contains
   `plugin/share/release-pub.pem` would have caught the stale pin in §3a.
+
+---
+
+# Shipping plugin 0.6.0 (2026-07-27, evening)
+
+Cause: a real session on 2026-07-27. An agent's ssh died on the 8h expiry,
+`tireless_status` answered `signed_in: true` beside a `token_expires_at` two
+hours in the past, `tireless_login` answered "already signed in", and the
+agent spent three tool calls repairing the auth layer that was never broken
+before shelling out to the thing that worked.
+
+## What changed, and where it can ship
+
+**Plugin 0.6.0 — ships now, no signing key involved.**
+
+1. `scripts/session-heal.sh` — heals on 0.4.2 (see the correction above).
+   Distinguishes `ok` (nothing was re-minted) from `healed`, and fails when a
+   cell printed `could not mint`, so "re-run whatever failed" is only ever
+   said when re-running can actually work.
+2. Three hooks. `hooks/session-warm.sh` (SessionStart, detached) and
+   `hooks/pre-tool-warm.sh` (PreToolUse/Bash, synchronous) renew the session at
+   the 7h mark, before the agent meets it — the PreToolUse one is what covers a
+   session expiring MID-task, which is the incident. `hooks/post-tool-heal.sh`
+   (PostToolUseFailure/Bash) is the catch-all: any Tireless command that fails
+   with an auth-shaped error gets a re-mint plus an instruction to retry,
+   delivered next to the tool result via `hookSpecificOutput.additionalContext`
+   (plain stdout would only reach the debug log on those events — verified
+   against the hook reference, not assumed). `TIRELESS_NO_AUTOHEAL=1` disables
+   all three.
+3. `scripts/alias.sh` — mtime-based staleness (the session file's mtime is the
+   mint time, so "will this expire soon?" costs a stat, not a 25 s probe) plus
+   a `(file, mtime)` fingerprint so a region dir the account no longer has
+   cannot re-arm the warm on every session start.
+4. `scripts/preflight.sh` — `AUTH` is now the WORST verdict across regions,
+   not the best (one live cell used to mask a dead one), plus `AUTH_REGIONS`.
+5. Guidance — the two-layer model in `skills/fix`, `skills/workspace`,
+   `AGENTS.snippet.md` and the per-project stanza; removal of the claim that
+   `tireless_doctor` re-mints (true only on unpublished builds); 8 new evals.
+
+Release: same as §2 below (bump is already in `plugin/.claude-plugin/plugin.json`),
+then re-pin `install.sh` `RELEASE_COMMIT` and the platform's
+`/connect/install.sh` route to the new commit, exactly as §3 describes. The
+hooks are Claude-Code-only: `install.sh` copies `skills/`, `scripts/` and
+`reference/`, so Codex/Cursor get the improved heal and guidance but no
+warming — they still meet an expiry reactively.
+
+**Connector — on `release/connect-0.5.0`, still key-gated.**
+
+6. `tools.go` `tireless_status` — reports `platform_session` (with the fact
+   that it refreshes itself, so a past expiry is not a finding),
+   `workspace_sessions` per region, and an `ssh_ready` verdict.
+7. `tools.go` `tireless_login` — now repairs the per-cell session too, exactly
+   as the CLI's `login` always did, and says so under `workspace_sessions`.
+   This alone would have ended the incident at step 3.
+8. `setup.go` — persists the mint's `expires_at` (the server has always
+   returned it; the connector always threw it away) and takes a per-region
+   cross-process mint lock, because a mint REAPS the previous token and two
+   windows minting at once can leave a dead token on disk.
+9. `session.go` / `tools.go` — `RefreshExpiringSessions` plus a keep-alive
+   goroutine in the MCP server: a thorough pass at startup, then a
+   network-free check every 10 minutes that only acts inside the renew margin.
+
+None of 6–9 change the download manifest story: they still need §1's signed
+publish before a user sees them.

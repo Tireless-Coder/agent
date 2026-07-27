@@ -1,6 +1,6 @@
 ---
 name: workspace
-description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer or server (ssh <workspace>.tireless), opening Claude Code/VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, checking why a workspace is slow (health/metrics), opening or closing the game server port, reviewing what is exposed to the internet, restarting/suspending/resuming a workspace, or creating a new one.
+description: Work on a connected Tireless workspace - run commands remotely, open editors, and manage preview ports. Use when running, building, or testing anything on the user's Tireless cloud dev computer or server (ssh <workspace>.tireless), opening Claude Code/VS Code/Cursor/web terminal/desktop on it, sharing or previewing a port, checking why a workspace is slow (health/metrics), opening or closing the game server port, reviewing what is exposed to the internet, restarting/suspending/resuming a workspace, or creating a new one. Also covers what to do when a remote command suddenly fails on auth mid-task (session expired / signed out) - that is a routine 8h re-mint, not a broken setup.
 allowed-tools: Bash(tireless-urls*), Bash(tireless-verify*), Bash(tireless list*), Bash(tireless ping*), Bash(tireless users show*)
 ---
 
@@ -28,6 +28,18 @@ every remote command. Full idiom reference (Claude Code:
   then poll with `ssh <ws>.tireless 'tail -20 ~/job1.log'`.
 - **Cap output**: append `| tail -100` (or grep) to anything chatty — full
   build logs burn your context for nothing.
+- **An ssh that fails on AUTH is routine, and yours to fix.** `session has
+  expired` / `You are signed out` / `not logged in` from ssh or the `tireless`
+  CLI means the per-cell Coder session aged out — cells cap it at 8h with no
+  refresh, so it happens about daily and says nothing about the workspace or
+  the setup. Run `tireless-session-heal` (Codex/Cursor:
+  `sh ~/.agents/skills/tireless/scripts/session-heal.sh`), then re-run the
+  command. It is headless: server-minted, no browser, no paste, no token in
+  chat, no user action. Do NOT reach for `tireless_status` or `tireless_login`
+  first — they describe the PLATFORM sign-in, a different layer that refreshes
+  itself, and on older connectors they will happily report "signed in" about a
+  connection that does not work. Do NOT run `tireless-connect login` yourself:
+  it can open a browser and block. Full decision tree: the `fix` skill.
 - Use only the `<ws>.tireless` alias. Never `ssh dev@<ip>` with relaxed
   host-key checking, and never wrap remote exec in an MCP tool.
 - Moving the CURRENT local work + session context onto the workspace (code,
