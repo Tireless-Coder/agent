@@ -26,8 +26,15 @@ set -u
 [ "${TIRELESS_NO_AUTOHEAL:-0}" = 1 ] && exit 0
 
 input="$(cat 2>/dev/null || true)"
-case "$input" in
-  *tireless*) ;;
+
+# Gate on the COMMAND, never on the whole payload. The payload always carries
+# `cwd` and `transcript_path`, so matching it means every Bash call in any
+# directory whose path contains "tireless" — this repo included — walks into
+# the auth/route classification below. That is how a failing unit test in
+# ~/work/tireless-agent gets told it "failed on auth".
+command="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+case "$command" in
+  *tireless*|*" ssh "*|ssh\ *) ;;
   *) exit 0 ;;
 esac
 
@@ -43,9 +50,15 @@ say() {
 # else — a failing test suite, a missing file, a broken build on the workspace
 # — is none of this hook's business, and healing on it would burn the mint
 # route on failures that have nothing to do with auth.
+# Only the CLI's and coderd's own distinctive sentences count. A bare "401"
+# used to be in this list and was a disaster: matched against the whole
+# payload it hit `duration_ms: 4013`, a session UUID containing 401, a line
+# number — so an ordinary failing test was reported to the model as an auth
+# failure, complete with an instruction to relay a `curl … | sh` install
+# command to a user who had never mentioned Tireless.
 auth_shaped=no
 case "$input" in
-  *"session has expired"*|*"You are signed out"*|*"not logged in"*|*"no longer logged in"*|*"Try logging in"*|*"401"*)
+  *"session has expired"*|*"You are signed out"*|*"not logged in"*|*"no longer logged in"*|*"Try logging in"*)
     auth_shaped=yes ;;
 esac
 
@@ -106,6 +119,11 @@ case "$out" in
     ;;
   SESSION=ok*)
     say "[tireless] The per-cell Coder session is live, so auth is NOT why that command failed — do not re-run any session repair. Diagnose the actual error, or use the fix skill if the connection itself looks wrong."
+    ;;
+  *E_BIN_STALE*)
+    # Nothing is installed here; this is not an auth problem and the user did
+    # not ask to onboard. Say so plainly and do not hand anyone an installer.
+    say "[tireless] That command looks Tireless-related but this machine has no tireless-connect installed, so nothing could be repaired. If the user did not expect a Tireless workspace here, ignore this entirely."
     ;;
   SESSION=action_required*)
     say "[tireless] That command failed on auth, and the session could NOT be re-minted headlessly because the PLATFORM sign-in also needs the user. Heal output: $out -- relay its NEXT line to the user verbatim. Do not run 'tireless-connect login' from your own shell: it can open a browser and block until it times out."

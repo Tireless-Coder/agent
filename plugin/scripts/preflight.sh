@@ -80,9 +80,13 @@ if [ -n "$CLI_BIN" ]; then echo "CLI=ok"; else echo "CLI=missing"; fi
 # would have healed it, was never reached. Per-region detail rides alongside in
 # AUTH_REGIONS so a caller can tell WHICH cell is out.
 #
-# Severity order (highest wins): ok < expired < missing < error. expired is
-# routine and self-healing, missing is onboarding for that cell, error means a
-# network/edge problem where healing is the wrong move entirely.
+# Severity order (highest wins): ok < expired < error, with `missing` carrying
+# NO severity at all. That last part matters: the platform installer creates
+# `~/.config/tireless/coder/<region>` unconditionally and never logs into it,
+# and no heal ever touches that root — so counting `missing` as worse than
+# `ok` made a perfectly healthy connector machine report AUTH=missing, which
+# reads as "never set up" and sends an agent into onboarding. `missing` is
+# reported only when NOTHING on this machine has a session.
 AUTH=missing
 AUTH_REGIONS=""
 SEEN_ANY=no
@@ -94,15 +98,15 @@ if [ -n "$CLI_BIN" ]; then
     verdict="$(tireless_session_probe "$d")"
     AUTH_REGIONS="${AUTH_REGIONS:+$AUTH_REGIONS,}$(basename "$d"):$verdict"
     case "$verdict" in
-      ok) r=0 ;;
-      expired) r=1 ;;
-      missing) r=2 ;;
+      ok) r=1 ;;
+      expired) r=2 ;;
+      missing) r=0 ;;   # no information, never a verdict on its own
       *) r=3 ;;
     esac
-    if [ "$r" -ge "$rank" ]; then
+    if [ "$r" -gt "$rank" ]; then
       rank=$r
       case "$verdict" in
-        ok|expired|missing) AUTH="$verdict" ;;
+        ok|expired) AUTH="$verdict" ;;
         *) AUTH=error ;;
       esac
     fi

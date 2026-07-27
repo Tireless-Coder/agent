@@ -178,10 +178,22 @@ fi
 # The marker and the URL arrive in ONE unbuffered write (RunLogin formats them
 # in a single Fprintf), so seeing the marker means the URL is already there.
 LOGIN_TIMEOUT="${TIRELESS_HEAL_TIMEOUT:-90}"
+# Everything this function starts must die with it. When a hook exceeds its
+# own timeout the harness aborts the script mid-wait, and without this the
+# backgrounded `tireless-connect login` SURVIVES: it goes on to mint and
+# rewrite ssh fragments minutes later with nothing watching, while holding one
+# of only three loopback OAuth ports (127.0.0.1:52180-52182) for up to five
+# minutes — enough orphans and a real interactive login fails for want of a
+# port. Observed live on 2026-07-27.
+cleanup_login() {
+  if [ -n "${lpid:-}" ] && kill -0 "$lpid" 2>/dev/null; then kill "$lpid" 2>/dev/null || true; fi
+  if [ -n "${lout:-}" ]; then rm -f "$lout"; fi
+}
 LOGIN_MARKER='open this URL to sign in'
 
 heal_via_login() {
   lout="$(mktemp "${TMPDIR:-/tmp}/tireless-login.XXXXXX")"
+  trap 'cleanup_login; rmdir "$HEAL_LOCK" 2>/dev/null || true' EXIT INT TERM
   "$CONNECT" login --no-browser </dev/null >"$lout" 2>&1 &
   lpid=$!
   waited=0

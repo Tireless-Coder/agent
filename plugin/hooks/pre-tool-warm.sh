@@ -27,8 +27,13 @@ set -u
 # The hook payload is JSON on stdin. Matching the raw text is deliberate: it
 # needs no parser, and a false positive here costs one stat.
 input="$(cat 2>/dev/null || true)"
-case "$input" in
-  *tireless*) ;;
+
+# Gate on the COMMAND, never on the whole payload: `cwd` and `transcript_path`
+# are always present, so payload matching opens this hook for every Bash call
+# made anywhere under a path containing "tireless".
+command="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+case "$command" in
+  *tireless*|*" ssh "*|ssh\ *) ;;
   *) exit 0 ;;
 esac
 
