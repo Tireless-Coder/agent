@@ -1,5 +1,47 @@
 # Shipping plugin 0.5.0 + connector 0.5.0
 
+> **STATUS 2026-07-27 — read this first.**
+>
+> **Shipped.** Plugin 0.5.0 is live on `Tireless-Coder/agent@main`
+> (`150d9c9` work, `17765ac` pin, `af28947` marketplace description). Claude
+> Code users get it on their next plugin refresh. `install.sh` is re-pinned to
+> `150d9c9`, and the platform's `/connect/install.sh` route now points at the
+> same commit, so Codex/Cursor receive the new skills once the web deploy
+> lands.
+>
+> **Not shipped: the connector binary.** `tireless-connect` stays at 0.4.2 for
+> users. The 0.5.0 source lives on `AperiAnalytics/timeless-platform` branch
+> `release/connect-0.5.0` (`fa6fac8`) and was deliberately reverted off `main`
+> (`e7379e8`) — see §1a for why. Publishing needs the offline release signing
+> key, which is yours alone.
+>
+> **Nothing is broken meanwhile.** The plugin's skills reach the fast
+> `ensure-session` path only on a 0.5.0 binary and fall back to
+> `tireless-connect doctor` otherwise, which already re-mints sessions on
+> 0.4.3+. On a 0.4.2 binary `tireless-session-heal` correctly reports
+> `SESSION=action_required` and tells the user to update the connector —
+> honest, not silently broken.
+
+## 1a. Why the connector cannot ride an ordinary commit
+
+Pushing the connector source to `main` made `main` un-deployable, and the
+gate that caught it is worth understanding before working around it.
+
+`deploy.yml`'s `release checks (go artifacts)` rebuilds the connector at the
+version `download-manifests.json` names and verifies the resulting bytes
+against the published hashes:
+
+```
+verify-download-artifacts: ERROR: tireless-connect-darwin-amd64 is
+fcb7bbd7…, manifest requires 5310f929…
+```
+
+Any source change makes the rebuild stop reproducing the bytes users are
+being served, so the check fails until the manifest is bumped, re-signed and
+the binaries published. `deploy` needs that job, so production is never
+reached — the failure is safe, just blocking. This is why the connector
+follows branch → publish → verify → merge, and why §1 below says do it FIRST.
+
 Three self-repair capabilities landed together (headless Coder-session
 re-mint, dead stock-Coder ssh-block removal, automatic project workspace
 stanza). They ship through **three separate channels** and the order matters,
@@ -27,11 +69,39 @@ this — but `session-heal` only reports `SESSION=healed` on a connector that
 can actually re-mint (0.4.3+, the doctor self-heal), and the fast path needs
 0.5.0.
 
-Per the existing recipe: branch → run `connect-publish.yml` → verify the
-bucket has `connect/0.5.0/` plus a matching signed `SHA256SUMS` → merge to
-`main`. Setting the manifest `min` to 0.5.0 force-upgrades every client; only
-do that if you want the fast path guaranteed everywhere, since the fallback
-already works.
+The branch is already prepared. From `timeless-platform`:
+
+```sh
+git checkout release/connect-0.5.0
+
+# 1. Build the four binaries at the NEW version and read their hashes.
+make -C agent connect CONNECT_VERSION=0.5.0
+shasum -a 256 agent/bin/connect/tireless-connect-*
+
+# 2. Set connect.version to 0.5.0 and paste those four hashes into
+#    apps/web/src/lib/download-manifests.json.
+
+# 3. Sign — this is the step only you can do (the private key is offline;
+#    ops/security/ holds only release-pub.pem).
+TIRELESS_RELEASE_SIGNING_KEY=/path/to/key.pem node ops/sign-connect-manifest.mjs
+node ops/sign-connect-manifest.mjs --check   # must pass before publishing
+
+git commit -am "release: connector 0.5.0 manifest + signature" && git push
+```
+
+Then run the **client-publish** workflow (Actions → *client-publish* →
+`workflow_dispatch`) **on `release/connect-0.5.0`**, confirm the bucket serves
+`connect/0.5.0/`, and merge the branch to `main`. The merge is what flips
+`/connect/bin/<os>-<arch>` to 0.5.0, and by then the deploy gate passes
+because the rebuild reproduces the published bytes.
+
+Do NOT set the manifest `min` to 0.5.0 unless you want to force-upgrade every
+client immediately — the fallback path means you don't have to.
+
+Hash note: build and sign on the same Go toolchain CI uses (`agent/go.mod`
+says 1.26.5). The build is reproducible (`-trimpath -buildvcs=false`,
+`CGO_ENABLED=0`), but a different Go patch release produces different bytes,
+and the publish then fails closed on the hash check.
 
 ## 2. Plugin repo (Claude Code users)
 
