@@ -264,19 +264,41 @@ lives where on it.
 3. Adding the host is a SEPARATE action from adding a project. Wanting a
    project on an existing host must never turn into re-adding the host.
 
-When it is explicitly requested, the Orca CLI does it without any UI:
+**The host id is the trap. Read this before running anything.**
 
-```bash
-orca project setup-existing-folder \
-  --project <project-id> --host ssh:<workspace>.tireless \
-  --path /home/dev/<workspace> --kind folder|git --json
+`--host` needs Orca's INTERNAL ssh target id, which looks like
+`ssh:ssh-<epoch-ms>-<6 random chars>` — NOT the ssh config alias. The CLI
+validates only the *shape*: `ssh:phone-farm.tireless` is accepted and written
+verbatim, then never resolves to a real target, so Orca silently falls back to
+LOCAL execution and the project dies at connect time with:
+
+```
+DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
 ```
 
-Field notes (verified against Orca's CLI, not guessed):
+…because it is looking on the user's laptop. Never synthesise a host id from an
+alias. That internal id is not discoverable from outside the app: it lives in
+memory (orca-data.json on disk lags by weeks), it is not in Orca's logs, and no
+CLI command lists ssh hosts.
 
-- `--host` takes `ssh:<alias>` — the same alias from the managed ssh config.
-  A bare alias is rejected ("Invalid host ID"). You do NOT need Orca's internal
-  target id.
+So:
+
+- **If the host already has at least one setup**, read the real id straight off
+  it and reuse it — this is the only trustworthy source:
+  ```bash
+  orca project setups --json   # -> .result.setups[].hostId, e.g. ssh:ssh-1782994851069-siy7q0
+  ```
+  Then the CLI is safe for any further project on that same host:
+  ```bash
+  orca project setup-existing-folder \
+    --project <project-id> --host ssh:ssh-<epoch>-<rand> \
+    --path /home/dev/<workspace> --kind folder|git --json
+  ```
+- **If the host has no setup yet**, the FIRST bind has to happen in Orca's UI —
+  it is the only thing that knows its own target id. Say so plainly instead of
+  guessing an id; a wrong one produces the DaemonProtocolError above, and
+  `setup-update` has no `--host`, so it can only be undone with `setup-delete`,
+  not repaired.
 - `--kind git` needs a real checkout at `--path` first (`git clone` it over ssh
   in the same pass); a fresh workspace has only a README, so `--kind folder` is
   right for an empty box.
