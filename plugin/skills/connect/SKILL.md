@@ -276,29 +276,41 @@ LOCAL execution and the project dies at connect time with:
 DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
 ```
 
-…because it is looking on the user's laptop. Never synthesise a host id from an
-alias. That internal id is not discoverable from outside the app: it lives in
-memory (orca-data.json on disk lags by weeks), it is not in Orca's logs, and no
-CLI command lists ssh hosts.
+…because it is looking on the user's laptop. **Never synthesise a host id from
+an alias.** No CLI command lists ssh hosts, so look the id up on disk:
 
-So:
+```bash
+# LIVE store. Note the profiles/ path — the top-level orca-data.json is a
+# pre-profile leftover and can be WEEKS stale; trusting it is how you conclude
+# "the id is unknowable" and guess.
+python3 - <<'EOF'
+import json, glob
+for p in glob.glob('~/Library/Application Support/orca/profiles/*/orca-data.json'.replace('~','/Users/'+__import__('os').environ['USER'])):
+    for t in json.load(open(p)).get('sshTargets', []):
+        print(t['id'], t.get('configHost'))
+EOF
+```
 
-- **If the host already has at least one setup**, read the real id straight off
-  it and reuse it — this is the only trustworthy source:
-  ```bash
-  orca project setups --json   # -> .result.setups[].hostId, e.g. ssh:ssh-1782994851069-siy7q0
-  ```
-  Then the CLI is safe for any further project on that same host:
-  ```bash
-  orca project setup-existing-folder \
-    --project <project-id> --host ssh:ssh-<epoch>-<rand> \
-    --path /home/dev/<workspace> --kind folder|git --json
-  ```
-- **If the host has no setup yet**, the FIRST bind has to happen in Orca's UI —
-  it is the only thing that knows its own target id. Say so plainly instead of
-  guessing an id; a wrong one produces the DaemonProtocolError above, and
-  `setup-update` has no `--host`, so it can only be undone with `setup-delete`,
-  not repaired.
+Match on `configHost == <workspace>.tireless`, take that entry's `id`, and pass
+`--host ssh:<id>`. Read-only — never write that file; the running app owns it.
+
+`orca project setups --json` is an equally good source when the host already has
+a setup (`.result.setups[].hostId`).
+
+Then:
+
+```bash
+orca project setup-existing-folder \
+  --project <anything> --host ssh:ssh-<epoch>-<rand> \
+  --path /home/dev/<workspace> --kind folder|git --json
+```
+
+**Always verify afterwards that the stored host resolves** — a wrong id cannot
+be repaired (`setup-update` has no `--host`), only removed with `setup-delete`:
+
+```bash
+orca project setups --json   # hostId must equal the ssh:<id> you looked up
+```
 - `--kind git` needs a real checkout at `--path` first (`git clone` it over ssh
   in the same pass); a fresh workspace has only a README, so `--kind folder` is
   right for an empty box.
