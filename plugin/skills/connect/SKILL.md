@@ -245,6 +245,57 @@ accurately:
 
 The canonical long alias keeps working unchanged; the short one is additive.
 
+### Binding a workspace as an Orca PROJECT (opt-in — never do this unprompted)
+
+Being a reachable ssh *host* is not the same as being an Orca *project*. Orca
+models `project × host`, so a host with no binding shows **"Project not set up
+on this host"** — which is not an error, and not an ssh problem. It literally
+means Orca probed the host, found it healthy, and has no record of which project
+lives where on it.
+
+**Rules, in order of importance:**
+
+1. **Only do this when the user explicitly asks for it.** Never bind a project
+   as a side effect of connecting, and never "helpfully" set one up because the
+   message looked like a failure. It writes durable metadata into their editor.
+2. **If they ask without saying where, ASK.** "Set up my workspace" does not
+   name an editor or a host. Ask which one before touching anything — they may
+   want it nowhere, or somewhere other than Orca.
+3. Adding the host is a SEPARATE action from adding a project. Wanting a
+   project on an existing host must never turn into re-adding the host.
+
+When it is explicitly requested, the Orca CLI does it without any UI:
+
+```bash
+orca project setup-existing-folder \
+  --project <project-id> --host ssh:<workspace>.tireless \
+  --path /home/dev/<workspace> --kind folder|git --json
+```
+
+Field notes (verified against Orca's CLI, not guessed):
+
+- `--host` takes `ssh:<alias>` — the same alias from the managed ssh config.
+  A bare alias is rejected ("Invalid host ID"). You do NOT need Orca's internal
+  target id.
+- `--kind git` needs a real checkout at `--path` first (`git clone` it over ssh
+  in the same pass); a fresh workspace has only a README, so `--kind folder` is
+  right for an empty box.
+- `orca repo add` is LOCAL-ONLY (`--path`, no `--host`) — never reach for it to
+  register something on a workspace.
+- `orca project setup-clone` does NOT work against ssh targets: "SSH targets are
+  cloned through the desktop UI because the desktop client owns SSH connections."
+- **Misleading error to know about:** `setup-existing-folder` imports the folder
+  and derives its own project id, THEN aligns it to `--project`. A non-matching
+  id throws `Imported folder does not match the selected project identity`
+  *after the import already succeeded* (re-alignment only works for github
+  projects). So on that error, check `orca project setups --json` before
+  retrying — the binding is probably already there, and retrying is a no-op
+  rather than a duplicate.
+- Reverse with `orca project setup-delete`. Safe to undo.
+
+Confirm with `orca project setups --json` (look for `setupState: "ready"`),
+never by asserting it worked.
+
 If the user's original request included VS Code or another external surface,
 continue after verification by calling `tireless_open_editor` with that editor.
 For Claude Code, this verified plugin session is already connected; launching
