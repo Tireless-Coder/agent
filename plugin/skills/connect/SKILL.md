@@ -161,6 +161,25 @@ real Coder deployment the user runs: say it is there, and leave it alone.
   (`{"action":"resume"}`) and follow `tireless_watch_state` until ready; with
   no MCP tools, send the user to the dashboard. Never `tireless start`.
 
+**Orgs: one login covers all of them.** A Tireless account can belong to several
+orgs (teams), and this connector already sees the workspaces of EVERY org the
+user belongs to — the list is a union, not a single org. `tireless_status` tags
+each row with `org` / `org_id`; group by that when you show the list, because
+otherwise two orgs read as one flat pile.
+
+Consequences to get right:
+
+- A workspace the user "can't reach in the other org" is almost always just an
+  unfamiliar name in this same list. Check the list before concluding anything.
+- Do **not** reach for `tireless_switch_account` for an org problem. It clears
+  the session and every regional Coder session, and changes nothing when both
+  orgs sit under one login. It is only for a genuinely different account.
+- Creating is the one thing that is org-specific: without an explicit
+  `team_id`, `tireless_create_workspace` lands in the account's default org. If
+  the confirm-gated card comes back with `team_choice_required`, ask the user
+  WHICH org before creating — a server in the wrong org is billed to the wrong
+  place and is awkward to move.
+
 ## Step 6 — verify
 
 Run `tireless-verify <workspace>` (or the Codex/Cursor script path). Prefer
@@ -208,6 +227,20 @@ Tell the user what now works, concretely: "Connected. I can run commands on
 `<workspace>` over ssh, start a local Claude Code session connected to it, open
 VS Code/Cursor in its remote project, share preview ports, and use Ctrl+V image
 paste in agents on the workspace."
+
+Connecting also writes a friendly `<workspace>.tireless` ssh alias into the
+managed config, so the workspace shows up as a ready-to-pick host in IDE remote
+pickers instead of the user hand-filling an "Add SSH host" dialog. The
+`ide_hosts` step in `tireless_connect_workspace` reports it. Two things to relay
+accurately:
+
+- VS Code, Cursor and Antigravity list it automatically (they read `~/.ssh/config`
+  and follow its `Include`).
+- Orca keeps its own copy of the host list, so it needs **Settings → SSH Hosts →
+  Import** once. After that it stays in sync. Never hand-edit Orca's data file —
+  the running app owns it and will overwrite outside writes.
+
+The canonical long alias keeps working unchanged; the short one is additive.
 
 If the user's original request included VS Code or another external surface,
 continue after verification by calling `tireless_open_editor` with that editor.
