@@ -234,11 +234,14 @@ pickers instead of the user hand-filling an "Add SSH host" dialog. The
 `ide_hosts` step in `tireless_connect_workspace` reports it. Two things to relay
 accurately:
 
-- VS Code, Cursor and Antigravity list it automatically (they read `~/.ssh/config`
-  and follow its `Include`).
-- Orca keeps its own copy of the host list, so it needs **Settings → SSH Hosts →
-  Import** once. After that it stays in sync. Never hand-edit Orca's data file —
-  the running app owns it and will overwrite outside writes.
+- VS Code, Cursor and Antigravity list it automatically — they read
+  `~/.ssh/config` and follow its `Include`. Nothing for the user to do.
+- Orca keeps its OWN copy of the host list and re-imports `~/.ssh/config` when
+  its **Settings → SSH Hosts** pane opens. So the user opens that pane once and
+  the workspaces are there. Do NOT tell them to click "Import": that button is
+  re-adopt, and is only needed for hosts they previously deleted by hand.
+  Never hand-edit Orca's data file either — the running app owns that state in
+  memory and overwrites outside writes.
 
 The canonical long alias keeps working unchanged; the short one is additive.
 
