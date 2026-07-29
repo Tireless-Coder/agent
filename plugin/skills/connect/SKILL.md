@@ -161,6 +161,25 @@ real Coder deployment the user runs: say it is there, and leave it alone.
   (`{"action":"resume"}`) and follow `tireless_watch_state` until ready; with
   no MCP tools, send the user to the dashboard. Never `tireless start`.
 
+**Orgs: one login covers all of them.** A Tireless account can belong to several
+orgs (teams), and this connector already sees the workspaces of EVERY org the
+user belongs to — the list is a union, not a single org. `tireless_status` tags
+each row with `org` / `org_id`; group by that when you show the list, because
+otherwise two orgs read as one flat pile.
+
+Consequences to get right:
+
+- A workspace the user "can't reach in the other org" is almost always just an
+  unfamiliar name in this same list. Check the list before concluding anything.
+- Do **not** reach for `tireless_switch_account` for an org problem. It clears
+  the session and every regional Coder session, and changes nothing when both
+  orgs sit under one login. It is only for a genuinely different account.
+- Creating is the one thing that is org-specific: without an explicit
+  `team_id`, `tireless_create_workspace` lands in the account's default org. If
+  the confirm-gated card comes back with `team_choice_required`, ask the user
+  WHICH org before creating — a server in the wrong org is billed to the wrong
+  place and is awkward to move.
+
 ## Step 6 — verify
 
 Run `tireless-verify <workspace>` (or the Codex/Cursor script path). Prefer
@@ -208,6 +227,149 @@ Tell the user what now works, concretely: "Connected. I can run commands on
 `<workspace>` over ssh, start a local Claude Code session connected to it, open
 VS Code/Cursor in its remote project, share preview ports, and use Ctrl+V image
 paste in agents on the workspace."
+
+Connecting also writes a friendly `<workspace>.tireless` ssh alias into the
+managed config, so the workspace shows up as a ready-to-pick host in IDE remote
+pickers instead of the user hand-filling an "Add SSH host" dialog. The
+`ide_hosts` step in `tireless_connect_workspace` reports it. Two things to relay
+accurately:
+
+- VS Code, Cursor and Antigravity list it automatically — they read
+  `~/.ssh/config` and follow its `Include`. Nothing for the user to do.
+- Orca keeps its OWN copy of the host list and re-imports `~/.ssh/config` when
+  its **Settings → SSH Hosts** pane opens. So the user opens that pane once and
+  the workspaces are there. Do NOT tell them to click "Import": that button is
+  re-adopt, and is only needed for hosts they previously deleted by hand.
+  Never hand-edit Orca's data file either — the running app owns that state in
+  memory and overwrites outside writes.
+
+The canonical long alias keeps working unchanged; the short one is additive.
+
+### Binding a workspace as an Orca PROJECT (opt-in — never do this unprompted)
+
+Being a reachable ssh *host* is not the same as being an Orca *project*. Orca
+models `project × host`, so a host with no binding shows **"Project not set up
+on this host"** — which is not an error, and not an ssh problem. It literally
+means Orca probed the host, found it healthy, and has no record of which project
+lives where on it.
+
+**Rules, in order of importance:**
+
+1. **Only do this when the user explicitly asks for it.** Never bind a project
+   as a side effect of connecting, and never "helpfully" set one up because the
+   message looked like a failure. It writes durable metadata into their editor.
+2. **If they ask without saying where, ASK.** "Set up my workspace" does not
+   name an editor or a host. Ask which one before touching anything — they may
+   want it nowhere, or somewhere other than Orca.
+3. Adding the host is a SEPARATE action from adding a project. Wanting a
+   project on an existing host must never turn into re-adding the host.
+
+**The host id is the trap. Read this before running anything.**
+
+`--host` needs Orca's INTERNAL ssh target id, which looks like
+`ssh:ssh-<epoch-ms>-<6 random chars>` — NOT the ssh config alias. The CLI
+validates only the *shape*: `ssh:phone-farm.tireless` is accepted and written
+verbatim, then never resolves to a real target, so Orca silently falls back to
+LOCAL execution and the project dies at connect time with:
+
+```
+DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
+```
+
+**Bottom line: `orca project setup-*` CANNOT create a working binding on an ssh
+host. Do not try.** It writes `hostId`/`executionHostId` but never
+`connectionId` — the raw target id (`ssh-<epoch>-<rand>`, no `ssh:` prefix) that
+`normalizeConnectionId` reads to route execution remotely. Without it Orca
+resolves the working directory on the LAPTOP and every terminal dies with:
+
+```
+DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
+```
+
+Confirmed structurally: a working remote binding carries `connectionId` on BOTH
+its repo and its setup record; a CLI-created one carries neither, and
+`setup-update` has no flag to add it. Confirmed behaviourally: the remote
+relay's log shows the PTY request never arrives — it is rejected locally first.
+This is consistent with Orca's own note that "the desktop client owns SSH
+connections": the CLI is not wired for ssh execution at all.
+
+So **the binding itself must be created in Orca's UI.** Only the desktop path
+reaches `repos:addRemote` → `addRemoteRepoFromPath`, which is the one function
+that writes `connectionId`. Walk the user through exactly this:
+
+1. Sidebar **Projects** header → the **folder-with-plus** icon ("Add Project").
+   NOT the `+` — that is Create-worktree, which cannot bind anything.
+2. In the **"Add a project"** dialog, use the **Host** selector to pick the
+   workspace's ssh host. It must be CONNECTED (the Add button is gated on
+   `selectedTargetConnected`); disconnected rows show an inline Connect first.
+3. Choose **"Open project on SSH host"**, then either type the path into
+   **"Host path"** or use **"Browse remote filesystem"** (genuinely remote — it
+   goes over `ssh:browseDir`).
+4. Click **"Add project on SSH host"**.
+5. A fresh workspace has no git repo, so Orca then shows **"Open as Folder"**
+   ("This folder isn't a Git repository…"). Confirm it. `connectionId` is still
+   written; the project simply loses git features.
+
+Expected result for a bare workspace — this is CORRECT, not degraded:
+`kind: "folder"`, `setupMethod: "legacy-repo"`, `connectionId` present.
+`setupMethod` is cosmetic; `connectionId` is the field that matters.
+
+Do NOT send them to Project Settings → "Available Hosts" for a bare workspace:
+that whole section is hidden for folder projects (`!isFolder ? …`), and the
+import would fail identity alignment anyway.
+
+Everything around the binding is still automatable.
+
+A CLI-created ssh binding LOOKS fine — `setupState: "ready"`, the file tree even
+loads, because file reads go over a different path than PTYs. Only terminals
+fail. So never treat "ready" as proof; a binding is only real if its records
+carry `connectionId`.
+
+For reading (never writing) Orca's live state, use the profile store — the
+top-level `orca-data.json` is a pre-profile leftover and can be weeks stale:
+
+```bash
+# LIVE store. Note the profiles/ path — the top-level orca-data.json is a
+# pre-profile leftover and can be WEEKS stale; trusting it is how you conclude
+# "the id is unknowable" and guess.
+python3 - <<'EOF'
+import json, glob
+for p in glob.glob('~/Library/Application Support/orca/profiles/*/orca-data.json'.replace('~','/Users/'+__import__('os').environ['USER'])):
+    for t in json.load(open(p)).get('sshTargets', []):
+        print(t['id'], t.get('configHost'))
+EOF
+```
+
+Match on `configHost == <workspace>.tireless`, take that entry's `id`, and pass
+`--host ssh:<id>`. Read-only — never write that file; the running app owns it.
+
+`orca project setups --json` is an equally good source when the host already has
+a setup (`.result.setups[].hostId`).
+
+Use that only to READ — to name a host, or to audit an existing binding:
+
+```bash
+python3 -c "import json,glob,os;
+p=glob.glob(os.path.expanduser('~/Library/Application Support/orca/profiles/*/orca-data.json'))[0];
+d=json.load(open(p));
+[print(s.get('path'), s.get('hostId'), 'connectionId=' + str(s.get('connectionId'))) for s in d['projectHostSetups']]"
+```
+
+A setup whose `connectionId` is `None` is the broken shape described above and
+will fail every terminal — remove it with `orca project setup-delete --setup
+<id>` and have the user redo it in the UI. Nothing else repairs it.
+
+Other CLI facts worth keeping (they apply to LOCAL hosts, where these commands
+do work):
+
+- `orca repo add` is LOCAL-ONLY (`--path`, no `--host`).
+- `orca project setup-clone` refuses ssh targets outright.
+- `setup-existing-folder` imports the folder and derives its own project id,
+  THEN aligns it to `--project`, so a mismatch throws `Imported folder does not
+  match the selected project identity` *after the import already happened*.
+  Check `orca project setups --json` before reacting — retrying is a no-op, not
+  a duplicate.
+- `orca project setup-delete` is the clean undo for anything above.
 
 If the user's original request included VS Code or another external surface,
 continue after verification by calling `tireless_open_editor` with that editor.
