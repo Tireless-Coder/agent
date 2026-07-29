@@ -276,8 +276,34 @@ LOCAL execution and the project dies at connect time with:
 DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
 ```
 
-…because it is looking on the user's laptop. **Never synthesise a host id from
-an alias.** No CLI command lists ssh hosts, so look the id up on disk:
+**Bottom line: `orca project setup-*` CANNOT create a working binding on an ssh
+host. Do not try.** It writes `hostId`/`executionHostId` but never
+`connectionId` — the raw target id (`ssh-<epoch>-<rand>`, no `ssh:` prefix) that
+`normalizeConnectionId` reads to route execution remotely. Without it Orca
+resolves the working directory on the LAPTOP and every terminal dies with:
+
+```
+DaemonProtocolError: Working directory "/home/dev/<workspace>" does not exist.
+```
+
+Confirmed structurally: a working remote binding carries `connectionId` on BOTH
+its repo and its setup record; a CLI-created one carries neither, and
+`setup-update` has no flag to add it. Confirmed behaviourally: the remote
+relay's log shows the PTY request never arrives — it is rejected locally first.
+This is consistent with Orca's own note that "the desktop client owns SSH
+connections": the CLI is not wired for ssh execution at all.
+
+So **the binding itself must be created in Orca's UI.** Tell the user that
+plainly; it is one action, and it is the only thing that produces a working
+setup. Everything else around it is still automatable.
+
+A CLI-created ssh binding LOOKS fine — `setupState: "ready"`, the file tree even
+loads, because file reads go over a different path than PTYs. Only terminals
+fail. So never treat "ready" as proof; a binding is only real if its records
+carry `connectionId`.
+
+For reading (never writing) Orca's live state, use the profile store — the
+top-level `orca-data.json` is a pre-profile leftover and can be weeks stale:
 
 ```bash
 # LIVE store. Note the profiles/ path — the top-level orca-data.json is a
@@ -297,38 +323,30 @@ Match on `configHost == <workspace>.tireless`, take that entry's `id`, and pass
 `orca project setups --json` is an equally good source when the host already has
 a setup (`.result.setups[].hostId`).
 
-Then:
+Use that only to READ — to name a host, or to audit an existing binding:
 
 ```bash
-orca project setup-existing-folder \
-  --project <anything> --host ssh:ssh-<epoch>-<rand> \
-  --path /home/dev/<workspace> --kind folder|git --json
+python3 -c "import json,glob,os;
+p=glob.glob(os.path.expanduser('~/Library/Application Support/orca/profiles/*/orca-data.json'))[0];
+d=json.load(open(p));
+[print(s.get('path'), s.get('hostId'), 'connectionId=' + str(s.get('connectionId'))) for s in d['projectHostSetups']]"
 ```
 
-**Always verify afterwards that the stored host resolves** — a wrong id cannot
-be repaired (`setup-update` has no `--host`), only removed with `setup-delete`:
+A setup whose `connectionId` is `None` is the broken shape described above and
+will fail every terminal — remove it with `orca project setup-delete --setup
+<id>` and have the user redo it in the UI. Nothing else repairs it.
 
-```bash
-orca project setups --json   # hostId must equal the ssh:<id> you looked up
-```
-- `--kind git` needs a real checkout at `--path` first (`git clone` it over ssh
-  in the same pass); a fresh workspace has only a README, so `--kind folder` is
-  right for an empty box.
-- `orca repo add` is LOCAL-ONLY (`--path`, no `--host`) — never reach for it to
-  register something on a workspace.
-- `orca project setup-clone` does NOT work against ssh targets: "SSH targets are
-  cloned through the desktop UI because the desktop client owns SSH connections."
-- **Misleading error to know about:** `setup-existing-folder` imports the folder
-  and derives its own project id, THEN aligns it to `--project`. A non-matching
-  id throws `Imported folder does not match the selected project identity`
-  *after the import already succeeded* (re-alignment only works for github
-  projects). So on that error, check `orca project setups --json` before
-  retrying — the binding is probably already there, and retrying is a no-op
-  rather than a duplicate.
-- Reverse with `orca project setup-delete`. Safe to undo.
+Other CLI facts worth keeping (they apply to LOCAL hosts, where these commands
+do work):
 
-Confirm with `orca project setups --json` (look for `setupState: "ready"`),
-never by asserting it worked.
+- `orca repo add` is LOCAL-ONLY (`--path`, no `--host`).
+- `orca project setup-clone` refuses ssh targets outright.
+- `setup-existing-folder` imports the folder and derives its own project id,
+  THEN aligns it to `--project`, so a mismatch throws `Imported folder does not
+  match the selected project identity` *after the import already happened*.
+  Check `orca project setups --json` before reacting — retrying is a no-op, not
+  a duplicate.
+- `orca project setup-delete` is the clean undo for anything above.
 
 If the user's original request included VS Code or another external surface,
 continue after verification by calling `tireless_open_editor` with that editor.
