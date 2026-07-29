@@ -293,9 +293,32 @@ relay's log shows the PTY request never arrives — it is rejected locally first
 This is consistent with Orca's own note that "the desktop client owns SSH
 connections": the CLI is not wired for ssh execution at all.
 
-So **the binding itself must be created in Orca's UI.** Tell the user that
-plainly; it is one action, and it is the only thing that produces a working
-setup. Everything else around it is still automatable.
+So **the binding itself must be created in Orca's UI.** Only the desktop path
+reaches `repos:addRemote` → `addRemoteRepoFromPath`, which is the one function
+that writes `connectionId`. Walk the user through exactly this:
+
+1. Sidebar **Projects** header → the **folder-with-plus** icon ("Add Project").
+   NOT the `+` — that is Create-worktree, which cannot bind anything.
+2. In the **"Add a project"** dialog, use the **Host** selector to pick the
+   workspace's ssh host. It must be CONNECTED (the Add button is gated on
+   `selectedTargetConnected`); disconnected rows show an inline Connect first.
+3. Choose **"Open project on SSH host"**, then either type the path into
+   **"Host path"** or use **"Browse remote filesystem"** (genuinely remote — it
+   goes over `ssh:browseDir`).
+4. Click **"Add project on SSH host"**.
+5. A fresh workspace has no git repo, so Orca then shows **"Open as Folder"**
+   ("This folder isn't a Git repository…"). Confirm it. `connectionId` is still
+   written; the project simply loses git features.
+
+Expected result for a bare workspace — this is CORRECT, not degraded:
+`kind: "folder"`, `setupMethod: "legacy-repo"`, `connectionId` present.
+`setupMethod` is cosmetic; `connectionId` is the field that matters.
+
+Do NOT send them to Project Settings → "Available Hosts" for a bare workspace:
+that whole section is hidden for folder projects (`!isFolder ? …`), and the
+import would fail identity alignment anyway.
+
+Everything around the binding is still automatable.
 
 A CLI-created ssh binding LOOKS fine — `setupState: "ready"`, the file tree even
 loads, because file reads go over a different path than PTYs. Only terminals
